@@ -17,6 +17,8 @@
 
 把本目录放到技能加载路径下（例如 `~/.agents/skills/spec-builder/`）。当需求涉及 SPEC、任务规格、修 bug、重构、调研或上线变更，且要为 Agent 准备任务说明时触发。
 
+生成的 SPEC 默认写入**用户当前打开的项目根目录**下的 `specs/`（不是技能目录）；技能自身的 `templates/`、`scripts/`、`references/` 仍在技能目录内。
+
 校验一份 SPEC：
 
 ```bash

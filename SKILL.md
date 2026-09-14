@@ -75,7 +75,10 @@ python3 <skill-dir>/scripts/validate_spec.py <spec-file>   # <skill-dir> = 本 S
 ### 第 5 步：输出
 
 - 用 **Markdown 说明 + YAML 规格**两部分回复；YAML 放在代码块里，或写入文件。
-- **输出位置**：写入当前工作目录（harness 工作区根目录）下的 `specs/` 文件夹，文件名为 `<type>-<short-slug>.yaml`；`specs/` 不存在就先创建。除非用户明确指定了别的路径。
+- **输出位置**：写入**用户当前打开的项目根目录**（harness 工作区根目录，即会话的 `pwd`）下的 `specs/` 文件夹，文件名为 `<id>.yaml`；`specs/` 不存在就先创建。
+  - 这里的 `specs/` 是**项目里的**，不是本 Skill 目录里的；技能自带的 `templates/`、`scripts/`、`references/` 才位于技能目录。
+  - 判断项目根目录：以 harness 当前工作目录为准；若用户显式给了路径，以用户为准。
+  - **安全边界**：若当前工作目录看起来就是技能安装目录（例如 `~/.agents/skills` 或 `~/.agents/skills/<skill-name>`），说明项目路径不明确——先问用户项目在哪或让其指定输出路径，**不要**把 SPEC 写进技能目录。
 - 结尾列出：假设、`open_questions`，以及需要用户拍板的地方。
 
 ## 各类型要点
@@ -175,7 +178,7 @@ spec:
 - [ ] `status: ready` 时 `blocking_questions` 为空
 - [ ] 验收标准覆盖正常、边界、失败三类路径
 - [ ] 校验脚本无 error
-- [ ] SPEC 文件已写入 harness 工作目录下的 `specs/` 文件夹
+- [ ] SPEC 文件已写入**当前项目根目录**下的 `specs/` 文件夹（不是技能目录）
 
 ## 与执行循环集成
 
