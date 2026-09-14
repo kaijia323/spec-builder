@@ -1,0 +1,66 @@
+spec:
+  type: ops
+  name: order-service v3 生产灰度上线
+  id: ops-order-service-v3-rollout
+  version: 1
+  updated: "2025-09-14"
+  status: draft
+  related: []
+  goal: 在不停机的前提下把 order-service v3 发布到生产，并完成数据库加字段与 10% 灰度。
+  context: v3 新增订单状态机，包含一次 DB 加字段（orders.state_machine_version，可空）；对外 API 与事件不变。
+  assumptions:
+    - 发布窗口为周三 02:00-04:00 低峰。
+    - 加字段为在线 DDL，不锁表。
+  blocking_questions:
+    - 回滚时新字段是否需要回填/清理？未确认前不进入 ready。
+  open_questions:
+    - 是否需要同步通知下游消费者？
+  target:
+    environment: production
+    service: order-service
+    region: cn-east-1
+  changes:
+    - 执行在线 DDL：为 orders 增加可空字段 state_machine_version
+    - 部署 v3 到 10% 实例，开启灰度开关
+    - 观察 30 分钟后逐步放量到 100%
+  risks:
+    - risk: 在线 DDL 触发表锁
+      likelihood: low
+      impact: high
+      mitigation: 使用 pt-online-schema-change，先在影子表验证；设置超时熔断
+    - risk: 灰度期间新旧版本状态不一致
+      likelihood: medium
+      impact: high
+      mitigation: 状态机为读兼容，旧版本忽略新字段；灰度期禁止回退状态
+  rollback:
+    trigger: 5xx 比例 > 1% 或订单状态异常告警持续 5 分钟
+    steps:
+      - 关闭灰度开关，流量切回 v2
+      - 保留新字段（可空，不影响 v2），不执行 DDL 回滚
+      - 输出故障时间线与受影响订单清单
+  monitoring:
+    - metric: order-service 5xx 比例
+      threshold: "> 1%"
+      window: 5 分钟
+      action: 触发回滚
+    - metric: 订单状态迁移异常数
+      threshold: "> 0"
+      window: 1 分钟
+      action: 告警并暂停放量
+    - metric: DB 锁等待
+      threshold: "> 50"
+      window: 1 分钟
+      action: 中止 DDL
+  acceptance_criteria:
+    - 新字段在生产存在且允许为 NULL，v2 读写不受影响
+    - v3 灰度 10% 期间 5xx 比例不超过 1%，30 分钟无状态异常告警
+    - 全量后新旧版本混跑情况下，订单状态与事件契约与基线一致
+    - 按 rollback.steps 演练一次，能在 5 分钟内切回 v2
+  failure_handling:
+    - scenario: 灰度期 5xx 超阈值
+      handling: 立即执行 rollback.steps 并告警
+    - scenario: DDL 超时
+      handling: 中止变更，标记任务失败，人工确认后重试
+  examples:
+    - input: 10% 灰度后 5xx 比例 0.2%，持续 30 分钟
+      output: 放量到 50%，继续观察

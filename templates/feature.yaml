@@ -1,0 +1,44 @@
+# feature 模板 —— 新功能 / 行为变更
+# 填满每个字段；暂时没有信息的写 "TBD" 或留空数组，不要删字段。
+spec:
+  type: feature
+  name: ""
+  id: feature-<slug>
+  version: 1
+  updated: "2026-09-14"
+  status: draft          # draft | ready | in_progress | done | blocked
+  related: []
+  goal: ""               # 一句话最终目标
+  context: ""            # 背景、为何要做、相关系统
+  assumptions: []        # 明确写出的假设
+  blocking_questions: []
+  open_questions: []     # 仍需用户拍板的事
+
+  inputs:
+    - name: ""
+      description: ""
+      source: ""         # 文件 / API / 用户输入 / 数据库
+      required: true
+
+  outputs:
+    format: ""           # Markdown / JSON / 文件 / 接口
+    schema: ""           # 可选；字段表或 JSON Schema
+    path: ""             # 产出落到哪里
+
+  constraints: []        # 技术、时间、依赖、权限等限制
+  out_of_scope: []       # 明确不做什么
+  tools: []              # 允许使用的工具 / 接口
+
+  steps:                 # 建议执行步骤
+    - ""
+
+  acceptance_criteria:   # 每条都必须可验证
+    - ""
+
+  failure_handling:
+    - scenario: ""       # 什么情况下会失败
+      handling: ""       # 重试 / 降级 / 回滚 / 转人工
+
+  examples:
+    - input: ""
+      output: ""

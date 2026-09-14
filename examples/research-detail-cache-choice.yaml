@@ -1,0 +1,45 @@
+spec:
+  type: research
+  name: 商品详情接口缓存选型调研
+  id: research-detail-cache-choice
+  version: 1
+  updated: "2025-09-14"
+  status: draft
+  related: []
+  question: 商品详情接口在高峰 QPS 下变慢，是否应该引入缓存？若引入，选哪种方案？
+  background: 大促期间 /api/product/:id 的 P95 从 80ms 升到 600ms，DB CPU 打满；团队对“要不要上 Redis”有分歧。
+  context: 接口读多写少，商品变更频率约每天 5%，一致性要求中等（允许秒级延迟）。
+  assumptions:
+    - 允许秒级最终一致。
+    - 预算允许引入一个 Redis 实例。
+  blocking_questions:
+    - 是否接受缓存与 DB 的秒级不一致？若必须强一致，本调研结论不适用。
+  open_questions:
+    - 是否需要同时评估本地缓存（Caffeine）？
+  hypotheses:
+    - 热点商品占比高，缓存命中率可达 90% 以上。
+    - 慢查询主要来自商品详情的多表 join。
+  methods:
+    - 采样线上 7 天请求，统计 Key 分布与命中率上限。
+    - 用影子流量对比 无缓存 / 本地缓存 / Redis 的 P95 与 DB QPS。
+    - 压测三种方案的故障降级行为。
+  deliverables:
+    - 一页结论：是否引入缓存、推荐方案、预期收益。
+    - 压测报告与容量估算。
+  decision_criteria:
+    - 若缓存命中率 >= 85% 且 P95 降到 150ms 以内，则推荐引入。
+    - 若收益不足 20%，则不引入，改做 SQL 优化。
+  timebox: 5 个工作日
+  acceptance_criteria:
+    - 给出明确的“引入 / 不引入”结论及量化依据。
+    - 至少对比 3 种方案，含 P95、DB QPS、命中率、降级行为。
+    - 给出容量与成本估算（实例规格、内存、月成本）。
+    - 结论对应的决策标准可被复核。
+  failure_handling:
+    - scenario: 线上采样数据不足
+      handling: 用测试环境造数 + 生产只读影子流量补齐，并注明数据来源
+    - scenario: 压测环境与生产差异大
+      handling: 在结论中标注置信度，并建议灰度验证
+  examples:
+    - input: 7 天采样显示 Top 1% 商品占 70% 请求
+      output: 结论为“引入 Redis + 热点本地缓存”，预计命中率 92%，P95 降至 120ms

@@ -1,0 +1,49 @@
+# ops 模板 —— 部署、监控、故障处理、变更
+spec:
+  type: ops
+  name: ""
+  id: ops-<slug>
+  version: 1
+  updated: "2026-09-14"
+  status: draft
+  related: []
+  goal: ""
+  context: ""
+  assumptions: []
+  blocking_questions: []
+  open_questions: []
+
+  target:                # 变更对象
+    environment: ""
+    service: ""
+    region: ""
+
+  changes:
+    - ""
+
+  risks:
+    - risk: ""
+      likelihood: low    # low | medium | high
+      impact: low        # low | medium | high
+      mitigation: ""
+
+  rollback:
+    trigger: ""          # 什么条件下触发回滚
+    steps: []
+
+  monitoring:
+    - metric: ""
+      threshold: ""
+      window: ""
+      action: ""
+
+  acceptance_criteria:
+    - ""
+
+  failure_handling:
+    - scenario: ""
+      handling: ""
+
+  examples:
+    - input: ""
+      output: ""

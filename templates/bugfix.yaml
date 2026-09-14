@@ -1,0 +1,63 @@
+# bugfix 模板 —— 缺陷修复（期望行为 != 实际行为）
+spec:
+  type: bugfix
+  name: ""
+  id: bugfix-<slug>
+  version: 1
+  updated: "2026-09-14"
+  status: draft          # draft | ready | in_progress | done | blocked
+  related: []
+  severity: medium       # low | medium | high | critical
+  symptom: ""            # 用户看到的现象
+  context: ""
+  assumptions: []
+  blocking_questions: []
+  open_questions: []
+
+  environment:
+    version: ""
+    os: ""
+    runtime: ""
+    account: ""
+    config: ""
+
+  reproduction:
+    steps:
+      - ""
+    expected: ""         # 期望行为
+    actual: ""           # 实际行为
+    frequency: always    # always | intermittent | once
+
+  evidence:
+    - type: ""           # log | network | screenshot | stacktrace | file
+      detail: ""
+      location: ""
+
+  scope:
+    affected: []         # 受影响的模块 / 行为
+    not_affected: []     # 明确不受影响的部分
+
+  root_cause:
+    hypothesis: ""       # 根因假设
+    evidence: ""         # 支持假设的证据
+    confirmed: false     # 未确认时，fix 应先给定位方案
+
+  fix:
+    approach: ""
+    files: []
+    constraints: []      # 例如：最小改动、不引入新依赖
+    alternatives_considered: []
+
+  regression_tests:      # 修复后必须跑的场景
+    - ""
+
+  acceptance_criteria:
+    - ""
+
+  failure_handling:
+    - scenario: ""
+      handling: ""
+
+  examples:
+    - input: ""
+      output: ""

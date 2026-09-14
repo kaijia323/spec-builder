@@ -1,0 +1,57 @@
+spec:
+  type: feature
+  name: 用户列表导出 Excel
+  id: feature-user-export
+  version: 1
+  updated: "2026-09-14"
+  status: ready
+  related: []
+  goal: 运营在后台用户列表页按当前筛选条件导出 Excel 文件。
+  context: 运营每周需要把筛选后的用户名单交给市场团队，目前只能人工复制，易错且费时。相关页面：/admin/users。
+  assumptions:
+    - 单次导出上限 5 万行，超出时提示并建议缩小筛选范围。
+    - 导出为异步任务，前端轮询任务状态。
+  blocking_questions: []
+  open_questions:
+    - 是否需要记录导出审计日志？暂按“需要”处理。
+  inputs:
+    - name: 筛选条件
+      description: 用户列表当前生效的筛选（状态、注册时间、渠道）
+      source: 前端页面 query 参数
+      required: false
+    - name: 操作者
+      description: 当前登录管理员，用于权限校验和审计
+      source: 会话
+      required: true
+  outputs:
+    format: xlsx
+    schema: "user_export.schema.json（列：用户ID、昵称、手机号、注册时间、状态、渠道）"
+    path: 导出中心，保留 7 天
+  constraints:
+    - 只能导出当前操作者有权限查看的字段
+    - 手机号需按现有脱敏规则处理
+    - 不使用新的第三方依赖
+  out_of_scope:
+    - 不做定时导出
+    - 不做邮件推送
+  tools:
+    - 现有导出任务服务
+  steps:
+    - 列表页新增“导出”按钮，携带当前筛选条件
+    - 后端校验权限并创建异步导出任务
+    - 任务生成 xlsx 并写入导出中心
+    - 前端轮询状态，完成后提供下载
+  acceptance_criteria:
+    - 选择筛选条件后点击“导出”，30 秒内导出中心出现对应任务，文件行数与筛选结果一致
+    - 无筛选条件导出时返回全部有权限的用户，上限 5 万行
+    - 导出文件手机号字段与页面显示一致（均已脱敏）
+    - 无导出权限的账号点击按钮返回 403，且不创建任务
+    - 导出行数超过 5 万时返回提示“请缩小筛选范围”，不生成文件
+  failure_handling:
+    - scenario: 导出任务失败
+      handling: 任务标记失败并允许用户重试；连续失败 3 次告警
+    - scenario: 生成超时
+      handling: 10 分钟超时后标记失败并清理临时文件
+  examples:
+    - input: 筛选 status=active、channel=wechat
+      output: 生成 xlsx，仅含 active 且来自 wechat 的用户，列与 schema 一致

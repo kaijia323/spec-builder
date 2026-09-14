@@ -1,0 +1,129 @@
+{
+  "skill_name": "spec-builder",
+  "evals": [
+    {
+      "id": 1,
+      "name": "bugfix-coupon-500",
+      "prompt": "线上出问题了：用户在购物车点结算，如果选的优惠券已经过期，页面会一直转圈，大概半分钟后报 500，客服已经被投诉爆了。测试账号 test-coupon-expired@example.com 能稳定复现，日志里 coupon-service/src/apply.ts:88 抛了 TypeError: Cannot read properties of null (reading 'discount')。帮我写一份修复规格，交给开发的 Agent 去修。",
+      "expected_output": "一份 bugfix 类型的修复规格，能证明“原来会坏、现在不坏”。",
+      "files": [],
+      "expectations": [
+        "type 判定为 bugfix",
+        "包含 reproduction（steps/expected/actual）",
+        "包含 evidence，且引用 apply.ts:88 的 TypeError 或 500 日志",
+        "包含 root_cause（hypothesis）与 fix（approach/files）",
+        "包含 regression_tests 且非空",
+        "acceptance_criteria 能证明原复现步骤不再出现且回归测试通过",
+        "SPEC 含稳定 id（<type>-<slug>）且 version >= 1",
+        "status=ready 时 blocking_questions 为空（有阻塞问题则保持 draft）",
+        "SPEC 通过 spec-builder 的 validate_spec.py 校验（0 error）"
+      ]
+    },
+    {
+      "id": 0,
+      "name": "feature-export",
+      "prompt": "我们后台管理系统的用户列表需要加一个导出功能。运营经常要把筛选后的用户导成 Excel 发给市场部，现在只能手动复制，很麻烦，字段还老是漏。帮我整理一份给开发 Agent 用的任务规格，放到 specs/ 下面。",
+      "expected_output": "一份 feature 类型的结构化 SPEC，包含 goal/inputs/outputs/constraints/steps 等字段与可验证的验收标准。",
+      "files": [],
+      "expectations": [
+        "产出了可解析的 YAML SPEC 文件，且 type 为 feature",
+        "包含 feature 必填字段：goal、inputs、outputs、constraints、steps",
+        "acceptance_criteria 至少 3 条，且每条可验证（含具体输入/输出或阈值）",
+        "outputs.format 明确，且包含 schema 或字段说明",
+        "包含边界声明（out_of_scope 或 constraints）",
+        "记录了假设或未决问题（assumptions / blocking_questions / open_questions 非空）",
+        "SPEC 含稳定 id（<type>-<slug>）且 version >= 1",
+        "status=ready 时 blocking_questions 为空（有阻塞问题则保持 draft）",
+        "验收标准覆盖失败或边界路径",
+        "SPEC 通过 spec-builder 的 validate_spec.py 校验（0 error）"
+      ]
+    },
+    {
+      "id": 5,
+      "name": "ops-rollout",
+      "prompt": "下周三要把 order-service v3 发到生产，这次包含一次数据库加字段和 10% 灰度。帮我出一份上线变更规格，交给运维 Agent 执行。",
+      "expected_output": "一份 ops 类型的变更规格：目标、变更项、风险、回滚、监控与验收。",
+      "files": [],
+      "expectations": [
+        "type 判定为 ops",
+        "包含 target 与 changes",
+        "包含 risks，且每条含 mitigation",
+        "包含 rollback，且回滚步骤可执行",
+        "包含 monitoring，含指标阈值与异常动作",
+        "SPEC 含稳定 id（<type>-<slug>）且 version >= 1",
+        "status=ready 时 blocking_questions 为空（有阻塞问题则保持 draft）",
+        "验收标准覆盖失败或边界路径",
+        "SPEC 通过 spec-builder 的 validate_spec.py 校验（0 error）"
+      ]
+    },
+    {
+      "id": 2,
+      "name": "refactor-order-state",
+      "prompt": "order-service 里订单状态的更新逻辑乱七八糟，散在 controller、两个定时任务和一个 webhook 处理器里，每个地方都自己写 if/else 判断合法状态，上周还出了状态回退的 bug。我们想重构，但对外接口和事件都不能变。帮我出一份重构规格。",
+      "expected_output": "一份 refactor 类型的规格，明确外部行为不变的契约与回滚方案。",
+      "files": [],
+      "expectations": [
+        "type 判定为 refactor",
+        "包含 current_state 与 motivation",
+        "包含 behavior_contract，至少 2 条必须保持不变的外部行为",
+        "包含 rollback 方案",
+        "acceptance_criteria 聚焦“行为不变 + 测试通过 + 结构目标达成”",
+        "scope 明确 not_affected（对外 API / 事件）",
+        "SPEC 含稳定 id（<type>-<slug>）且 version >= 1",
+        "status=ready 时 blocking_questions 为空（有阻塞问题则保持 draft）",
+        "验收标准覆盖失败或边界路径",
+        "SPEC 通过 spec-builder 的 validate_spec.py 校验（0 error）"
+      ]
+    },
+    {
+      "id": 4,
+      "name": "research-cache-choice",
+      "prompt": "我们商品详情接口一到高峰期就慢，团队在争论要不要上 Redis 缓存。先别写代码，帮我出一个调研方案，把该不该上、上什么方案弄清楚。",
+      "expected_output": "一份 research 类型的调研规格：明确问题、方法、交付物、决策标准与时间盒。",
+      "files": [],
+      "expectations": [
+        "type 判定为 research",
+        "包含 question 与 background",
+        "包含 methods 与 deliverables",
+        "包含 decision_criteria 与 timebox",
+        "acceptance_criteria 明确调研产出的验收方式",
+        "SPEC 含稳定 id（<type>-<slug>）且 version >= 1",
+        "status=ready 时 blocking_questions 为空（有阻塞问题则保持 draft）",
+        "SPEC 通过 spec-builder 的 validate_spec.py 校验（0 error）"
+      ]
+    },
+    {
+      "id": 6,
+      "name": "vague-notification",
+      "prompt": "给系统加个通知功能吧，用户操作的时候能收到提醒。",
+      "expected_output": "信息严重不足时，先显式提出假设与阻塞问题并保持 draft，而不是硬编一份 ready 的规格。",
+      "files": [],
+      "expectations": [
+        "type 判定为 feature",
+        "对缺失信息显式处理（assumptions 或 blocking_questions 非空）",
+        "至少提出 3 条假设或未决问题",
+        "SPEC 含稳定 id（<type>-<slug>）且 version >= 1",
+        "status=ready 时 blocking_questions 为空（有阻塞问题则保持 draft）",
+        "验收标准覆盖失败或边界路径",
+        "SPEC 通过 spec-builder 的 validate_spec.py 校验（0 error）"
+      ]
+    },
+    {
+      "id": 3,
+      "name": "validate-existing",
+      "prompt": "帮我看看这份 SPEC 有什么问题、缺什么，然后给我一份补全后的版本：\n\n```yaml\nspec:\n  type: feature\n  name: 评论点赞\n  goal: 给评论加点赞\n  acceptance_criteria:\n    - 点赞功能正常\n  failure_handling: []\n```",
+      "expected_output": "指出缺失字段与不可验证的验收标准，并给出补全后的 SPEC。",
+      "files": [],
+      "expectations": [
+        "指出缺少必填字段（如 inputs、outputs、constraints、steps、failure_handling）",
+        "指出“点赞功能正常”不可验证，需要具体输入/输出/阈值",
+        "给出补全后的 SPEC 或逐字段的具体补全建议",
+        "建议补充边界、失败处理与示例",
+        "没有把原 SPEC 当作完整的规格直接通过",
+        "SPEC 含稳定 id（<type>-<slug>）且 version >= 1",
+        "status=ready 时 blocking_questions 为空（有阻塞问题则保持 draft）",
+        "SPEC 通过 spec-builder 的 validate_spec.py 校验（0 error）"
+      ]
+    }
+  ]
+}

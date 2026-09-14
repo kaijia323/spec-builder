@@ -1,0 +1,51 @@
+spec:
+  type: refactor
+  name: 收敛订单状态更新逻辑
+  id: refactor-order-state
+  version: 1
+  updated: "2026-09-14"
+  status: ready
+  related: []
+  goal: 把散落在 6 个文件里的订单状态流转逻辑收敛到单一状态机模块，消除重复与不一致。
+  context: 订单状态在 order-service 的 controller、两个 job、一个 webhook 处理器里各自 if/else 更新，已出现多次状态回退 bug。
+  current_state: 状态更新逻辑分布在 order-service/src/{controllers,cron,webhooks} 共 6 处，各自维护合法流转判断，规则不一致。
+  motivation: 规则分散导致状态回退与漏发事件；每次加状态都要改多处。
+  assumptions:
+    - 外部 API 与事件格式保持不变。
+  blocking_questions: []
+  open_questions:
+    - 是否借此机会补齐状态枚举文档？暂列为后续任务。
+  scope:
+    affected:
+      - order-service 内部状态更新调用点
+    not_affected:
+      - 对外 REST API
+      - 订单事件消息格式
+      - 数据库表结构
+  behavior_contract:
+    - 对外订单状态取值与含义不变
+    - 合法流转的成功/失败结果与修复前一致
+    - 发出的订单事件名称、字段、时机不变
+    - 并发更新同一订单的最终状态与修复前一致
+  constraints:
+    - 不改变公开 API 与事件契约
+    - 分阶段合并，不长期保留双写
+  out_of_scope:
+    - 新增订单状态
+    - 修改事件总线
+  steps:
+    - 抽出状态机模块并补齐单元测试
+    - 逐个调用点迁移，每迁移一处即回归
+    - 删除旧的分支判断
+  rollback: 每个迁移提交可独立 revert；状态机未启用前不影响现有路径。
+  acceptance_criteria:
+    - 状态机模块单测覆盖所有合法与非法流转，全部通过
+    - 全部 6 个调用点迁移完成，仓库内不再有重复的流转判断
+    - 对外 API 与事件契约的契约测试通过
+    - 并发更新订单的集成测试结果与重构前一致
+  failure_handling:
+    - scenario: 迁移后出现状态不一致
+      handling: revert 本次迁移提交，保留状态机模块继续排查
+  examples:
+    - input: 已支付订单收到“发货”请求
+      output: 状态从 paid 变为 shipped 并发出 order.shipped 事件（与重构前一致）

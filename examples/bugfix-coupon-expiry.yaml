@@ -1,0 +1,79 @@
+spec:
+  type: bugfix
+  name: 优惠券过期导致结算接口 500 且页面卡死
+  id: bugfix-coupon-expiry
+  version: 1
+  updated: "2026-09-14"
+  status: ready
+  related: []
+  severity: high
+  symptom: 购物车结算时，若所选优惠券已过期，页面持续转圈约 30 秒后报 500，用户无法完成下单。
+  context: 结算接口 /api/checkout 调用了 coupon-service 校验优惠券；最近一次发券活动后开始出现。
+  assumptions:
+    - 优惠券过期数据未在结算前清理。
+  blocking_questions: []
+  open_questions:
+    - 是否需要顺带清理用户购物车里已过期的券？暂列为后续任务。
+  environment:
+    version: v2.8.1
+    os: Ubuntu 22.04
+    runtime: Node 20.11
+    account: test-coupon-expired@example.com
+    config: 默认结算配置
+  reproduction:
+    steps:
+      - 登录并加入一件商品到购物车
+      - 选择一张已过期优惠券（可用测试账号）
+      - 点击“去结算”
+    expected: 提示“优惠券已失效”，并允许移除后继续结算
+    actual: 页面转圈约 30 秒后报 500，购物车保留
+    frequency: always
+  evidence:
+    - type: log
+      detail: "TypeError: Cannot read properties of null (reading 'discount')"
+      location: coupon-service/src/apply.ts:88
+    - type: network
+      detail: POST /api/checkout 返回 500，耗时 30.2s
+      location: 浏览器 Network
+  scope:
+    affected:
+      - 结算接口的优惠券校验
+      - 购物车结算页错误提示
+    not_affected:
+      - 正常优惠券结算
+      - 支付流程
+      - 注册与登录
+  root_cause:
+    hypothesis: 优惠券查询在过期后返回 null，apply.ts 未判空直接访问 discount
+    evidence: 日志在 apply.ts:88 抛 TypeError；过期券查询返回 null 可稳定复现
+    confirmed: true
+  fix:
+    approach: apply.ts 对优惠券为空/过期返回明确错误码；结算层捕获后提示用户移除优惠券
+    files:
+      - coupon-service/src/apply.ts
+      - checkout-web/src/pages/Checkout.tsx
+    constraints:
+      - 保持最小改动
+      - 不改变正常优惠券的优惠计算
+      - 不引入新依赖
+    alternatives_considered:
+      - 在网关层统一兜底：被否，无法给用户可操作的提示
+  regression_tests:
+    - 正常优惠券结算成功
+    - 过期优惠券结算返回可读提示且不报 500
+    - 无优惠券结算正常
+    - 优惠券服务超时降级
+  acceptance_criteria:
+    - 按原复现步骤操作，不再出现 500，页面 2 秒内提示“优惠券已失效”
+    - 移除优惠券后可正常完成结算，/api/checkout 返回 200
+    - 正常优惠券的抵扣金额与修复前一致（示例订单：100 元立减 10 元）
+    - 结算相关单元测试与回归用例全部通过
+    - 模拟过期券场景不再出现在 apply.ts:88 的 TypeError
+  failure_handling:
+    - scenario: 优惠券服务不可用
+      handling: 降级为不使用优惠券并提示，不阻断下单
+    - scenario: 修复回归失败
+      handling: 回滚本次改动并记录原因
+  examples:
+    - input: 结算请求携带过期券 couponId=EXPIRED-1
+      output: 返回 400 与错误码 COUPON_EXPIRED，前端提示“优惠券已失效”

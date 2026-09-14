@@ -1,0 +1,40 @@
+# research 模板 —— 先调研，再决策
+spec:
+  type: research
+  name: ""
+  id: research-<slug>
+  version: 1
+  updated: "2026-09-14"
+  status: draft
+  related: []
+  question: ""           # 要回答的核心问题
+  background: ""
+  context: ""
+  assumptions: []
+  blocking_questions: []
+  open_questions: []
+
+  hypotheses:
+    - ""
+
+  methods:               # 调研 / 实验方法
+    - ""
+
+  deliverables:          # 产出：结论报告 / 选型建议 / POC
+    - ""
+
+  decision_criteria:     # 什么证据支持什么决策
+    - ""
+
+  timebox: ""            # 时间盒，例如：2 天
+
+  acceptance_criteria:
+    - ""
+
+  failure_handling:
+    - scenario: ""
+      handling: ""
+
+  examples:
+    - input: ""
+      output: ""

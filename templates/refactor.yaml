@@ -1,0 +1,42 @@
+# refactor 模板 —— 外部行为不变，内部结构优化
+spec:
+  type: refactor
+  name: ""
+  id: refactor-<slug>
+  version: 1
+  updated: "2026-09-14"
+  status: draft
+  related: []
+  goal: ""               # 结构目标，例如：把订单状态机收敛到一个模块
+  context: ""
+  current_state: ""      # 现状：代码散落在哪、有什么问题
+  motivation: ""         # 为什么要重构
+  assumptions: []
+  blocking_questions: []
+  open_questions: []
+
+  scope:
+    affected: []
+    not_affected: []
+
+  behavior_contract:     # 重构前后必须保持一致的外部行为
+    - ""
+
+  constraints: []        # 例如：不改变公开 API、不停机
+  out_of_scope: []
+
+  steps:
+    - ""
+
+  rollback: ""           # 如何安全回退
+
+  acceptance_criteria:
+    - ""
+
+  failure_handling:
+    - scenario: ""
+      handling: ""
+
+  examples:
+    - input: ""
+      output: ""
