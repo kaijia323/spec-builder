@@ -79,6 +79,7 @@ python3 <skill-dir>/scripts/validate_spec.py <spec-file>   # <skill-dir> = 本 S
   - 这里的 `specs/` 是**项目里的**，不是本 Skill 目录里的；技能自带的 `templates/`、`scripts/`、`references/` 才位于技能目录。
   - 判断项目根目录：以 harness 当前工作目录为准；若用户显式给了路径，以用户为准。
   - **安全边界**：若当前工作目录看起来就是技能安装目录（例如 `~/.agents/skills` 或 `~/.agents/skills/<skill-name>`），说明项目路径不明确——先问用户项目在哪或让其指定输出路径，**不要**把 SPEC 写进技能目录。
+- **查看器**：确保项目 `specs/` 下有 `specs.html`。缺失时运行 `python3 <skill-dir>/scripts/ensure_viewer.py <项目根目录>`，它会从技能 `assets/specs.html` 复制一份；已存在则保留，不要覆盖。它是一份通用查看器：浏览器里一次性读取 `specs/` 下所有符合规则的 YAML，按类型/状态分组、可搜索，并按 `validate_spec.py` 的规则标出 error / warning。不需要为每份 SPEC 生成单独的 HTML，也不要写进技能目录。
 - 结尾列出：假设、`open_questions`，以及需要用户拍板的地方。
 
 ## 各类型要点
@@ -179,6 +180,24 @@ spec:
 - [ ] 验收标准覆盖正常、边界、失败三类路径
 - [ ] 校验脚本无 error
 - [ ] SPEC 文件已写入**当前项目根目录**下的 `specs/` 文件夹（不是技能目录）
+- [ ] 项目 `specs/` 下有 `specs.html` 查看器（缺失时用 `scripts/ensure_viewer.py` 创建，已有则不覆盖）
+
+## 浏览 SPEC（specs.html）
+
+`specs/specs.html` 是一份自包含的查看器（Tailwind CSS v4 + js-yaml，均走 CDN），把 `specs/` 下的 YAML 渲染成人类友好的视图，并按 `validate_spec.py` 的规则在浏览器里标出 error / warning。它只读，不会修改 SPEC。
+
+创建（仅在缺失时）：
+
+```bash
+python3 <skill-dir>/scripts/ensure_viewer.py <项目根目录>
+```
+
+打开方式二选一：
+
+1. **双击 `specs.html`**（file://）：页面里点“选择 specs 文件夹”或把 `specs/` 拖进去。浏览器不允许 file:// 页面自动读取同目录文件，所以需要这一步。
+2. **本地服务**：在项目根目录运行 `python3 -m http.server 8000`，访问 `http://localhost:8000/specs/specs.html`。此时会自动读取同目录所有 YAML，无需手选。
+
+查看器支持按类型/状态分组与搜索；验收标准可勾选，进度记在浏览器本地，用于验收时逐条核对。
 
 ## 与执行循环集成
 

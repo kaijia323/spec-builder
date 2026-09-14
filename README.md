@@ -11,6 +11,8 @@
 - `references/spec-field-guide.md` — 字段含义与填写标准。
 - `examples/` — 五种类型的成品示例。
 - `scripts/validate_spec.py` — 校验脚本：必填字段、空值、弱验收标准、`ready` 门槛、类型专属检查。
+- `scripts/ensure_viewer.py` — 在项目 `specs/` 下创建 `specs.html`（仅缺失时，已有不覆盖）。
+- `assets/specs.html` — 单文件查看器：一次性读取项目 `specs/` 下所有符合规则的 YAML，浏览器里易读渲染并按规则标出 error / warning。
 - `evals/evals.json` — 7 个评测用例与 61 条断言。
 
 ## 使用
@@ -27,6 +29,23 @@ python3 scripts/validate_spec.py specs/feature-user-export.yaml --json
 ```
 
 退出码：0 = 无 error，1 = 有 error，2 = 读取或解析失败。
+
+## 浏览 SPEC
+
+`specs/specs.html` 是一份自包含的查看器（Tailwind CSS v4 + js-yaml，均走 CDN），只读，不修改 SPEC。
+
+创建（缺失时）：
+
+```bash
+python3 scripts/ensure_viewer.py <项目根目录>
+```
+
+打开方式：
+
+1. **双击 `specs.html`**：页面里点“选择 specs 文件夹”或把 `specs/` 拖入（浏览器不允许 file:// 页面自动读取同目录文件）。
+2. **本地服务**：项目根目录运行 `python3 -m http.server 8000`，访问 `http://localhost:8000/specs/specs.html`，自动读取同目录全部 YAML。
+
+支持按类型/状态分组、搜索过滤、规则校验徽章；验收标准可勾选并在浏览器本地保存进度。
 
 ## 设计要点
 

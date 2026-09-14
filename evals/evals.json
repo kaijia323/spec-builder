@@ -124,6 +124,23 @@
         "status=ready 时 blocking_questions 为空（有阻塞问题则保持 draft）",
         "SPEC 通过 spec-builder 的 validate_spec.py 校验（0 error）"
       ]
+    },
+    {
+      "id": 7,
+      "name": "viewer-bootstrap",
+      "prompt": "我们后台的订单列表现在只能看全部订单，运营想按创建时间区间筛选并导出对账。帮我把这个需求整理成一份给开发 Agent 用的任务规格，写到项目的 specs/ 下。项目根目录就是当前工作目录，里面已经有 specs/ 目录了。",
+      "expected_output": "一份 feature 类型的 SPEC 写入项目 specs/，并且项目 specs/ 下同时存在一份只读查看器 specs.html；已有文件不被覆盖。",
+      "files": [],
+      "expectations": [
+        "在 specs/ 下写出新的可解析 SPEC YAML，且 type 为 feature",
+        "新 SPEC 通过 spec-builder 的 validate_spec.py 校验（0 error）",
+        "运行结束后项目 specs/ 下存在 specs.html",
+        "specs.html 是完整查看器（含 id=\"spec-viewer-app\"、@tailwindcss/browser@4、js-yaml）",
+        "specs/ 下原有文件未被删除或修改",
+        "已有 specs.html 时不会被覆盖（ensure_viewer.py 保留现有内容）",
+        "没有把 SPEC 或查看器写进技能目录",
+        "端到端：HTTP 打开 specs/specs.html 能渲染既有 YAML（历史订单导出）与新 SPEC，且打开前后 YAML 内容不变"
+      ]
     }
   ]
 }
