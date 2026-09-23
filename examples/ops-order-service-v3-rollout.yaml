@@ -2,19 +2,29 @@ spec:
   type: ops
   name: order-service v3 生产灰度上线
   id: ops-order-service-v3-rollout
-  version: 1
-  updated: "2025-09-14"
-  status: draft
+  version: 2
+  updated: "2026-09-22"
+  # in_progress = 有人在做；超过 14 天没动会被校验器和查看器提醒
+  status: in_progress
   related: []
   goal: 在不停机的前提下把 order-service v3 发布到生产，并完成数据库加字段与 10% 灰度。
-  context: v3 新增订单状态机，包含一次 DB 加字段（orders.state_machine_version，可空）；对外 API 与事件不变。
+  context: v3 新增订单状态机，包含一次 DB 加字段（orders.state_machine_version，可空）；对外 API 与事件不变。回滚时新字段不需要回填/清理（用户 2026-09-22 答复：字段可空且 v2 不读它，保留即可）。
   assumptions:
     - 发布窗口为周三 02:00-04:00 低峰。
     - 加字段为在线 DDL，不锁表。
-  blocking_questions:
-    - 回滚时新字段是否需要回填/清理？未确认前不进入 ready。
+  # 已答复的阻塞问题结论要落进 context / 验收标准 / follow_ups，然后从列表清空（G2）
+  blocking_questions: []
   open_questions:
-    - 是否需要同步通知下游消费者？
+    - q: 是否需要同步通知下游消费者？
+      status: assumed
+      asked_at: "2026-09-22"
+      assumption: 先按"不同步通知"推进，事件契约没变，消费者无需改动。
+      if_wrong: 若有消费者依赖新字段 state_machine_version，需要补一份变更通知并给迁移窗口。
+      confirm_by: 灰度 10% 开始前（2026-09-24 02:00）找下游负责人确认一次。
+    - q: 灰度期间要不要对 v2/v3 的订单状态做抽样比对？
+      status: answered
+      asked_at: "2026-09-22"
+      answer: 要，每小时抽 200 单比对，发现不一致立即停灰度。
   target:
     environment: production
     service: order-service
@@ -64,3 +74,20 @@ spec:
   examples:
     - input: 10% 灰度后 5xx 比例 0.2%，持续 30 分钟
       output: 放量到 50%，继续观察
+  status_log:
+    - date: "2026-09-22"
+      from: none
+      to: ready
+      by: user
+      version: 1
+      note: 回滚字段问题问过用户，结论写进 context 与 rollback.steps 后清空 blocking_questions
+    - date: "2026-09-22"
+      from: ready
+      to: in_progress
+      by: ops-agent
+      version: 2
+      note: 影子表验证 DDL 通过，开始灰度前准备
+  # 未完成，没有 verification；完成时用 --to done 一次写全结论/逐条 AC/命令/遗留项
+  follow_ups:
+    - "F1（中）：下游消费者通知机制缺失，本次靠人工确认兜底；触发条件：出现第二个依赖订单状态的消费方时。"
+    - "F2（低）：灰度抽样比对目前是手工脚本，等本次上线后固化成巡检任务；触发条件：v3 全量完成。"

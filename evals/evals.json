@@ -141,6 +141,74 @@
         "没有把 SPEC 或查看器写进技能目录",
         "端到端：HTTP 打开 specs/specs.html 能渲染既有 YAML（历史订单导出）与新 SPEC，且打开前后 YAML 内容不变"
       ]
+    },
+    {
+      "id": 8,
+      "name": "ask-before-ready",
+      "prompt": "我们想给工单系统加一个“超时自动关闭”：工单最后一条回复超过一段时间没人跟进，就自动关单并通知提单人。帮我出一份 SPEC，放到 specs/ 下面。",
+      "expected_output": "先产出 draft SPEC，并真的把需要用户拍板的问题发给用户等答复；用户答复之前不得进入 ready、不得开工。",
+      "files": [],
+      "expectations": [
+        "产出了可解析的 SPEC YAML，type 判定为 feature，初始 status 为 draft",
+        "对话里真的向用户提出了问题：有明确的提问动作，问题条数 1~3 条（只写“如有疑问请告知”“你看着定”不算）",
+        "问题覆盖需要用户拍板的关键点（例如超时时长、哪些状态可自动关闭、通知渠道、是否允许申诉重开，至少 2 个）",
+        "这些问题被结构化写进 YAML：blocking_questions 用 {q, answered: false, asked_at: \"\", answer: \"\"}，或 open_questions 用 {q, status: open, asked_at: \"\", answer: \"\"}；不使用纯字符串写法",
+        "没有编造用户答复：所有 answer 为空、answered 为 false，不出现“用户已确认”“按用户要求”这类自问自答",
+        "在拿到答复之前没有把 status 改成 ready/in_progress，也没有开始写实现代码",
+        "明确告诉用户“等你回答这几个问题后再进入 ready/开工”，把球踢回到用户而不是自己替用户决定",
+        "SPEC 通过 spec-builder 的 validate_spec.py 校验（draft 状态下 0 error）"
+      ]
+    },
+    {
+      "id": 9,
+      "name": "finish-with-verification",
+      "prompt": "specs/ 下这张 SPEC 是这次要做的活（内容见下）。功能已经实现并自查过了：POST /api/tickets/autoclose 在测试环境返回 200；单测 32 passed，回归 12 项全绿；唯一没验的是“连续关闭 1000 张工单时的耗时”，需要压测。\n帮我把这张 SPEC 收尾到“做完、等复核”的状态，YAML 我要直接拿给复核的人看。\n\n```yaml\nspec:\n  type: feature\n  name: 工单超时自动关闭\n  id: feature-ticket-autoclose\n  version: 2\n  updated: \"2026-09-20\"\n  status: in_progress\n  related: []\n  goal: 工单超过 72 小时无跟进时自动关闭，并通知提单人。\n  context: 客服反馈僵尸工单堆积，重复跟进成本高。\n  assumptions:\n    - 通知走现有站内信通道。\n  blocking_questions: []\n  open_questions: []\n  inputs:\n    - name: 工单最后回复时间\n      description: 用于计算是否超过 72 小时\n      source: 工单表 last_reply_at\n      required: true\n  outputs:\n    format: 工单状态变更 + 站内信\n    schema: \"closed 状态 + 通知记录（ticket_id、receiver_id、sent_at）\"\n  constraints:\n    - 有未读回复的工单不关闭\n  steps:\n    - 定时任务扫描超时工单\n    - 关闭并写状态日志\n    - 发送站内信通知\n  acceptance_criteria:\n    - 超过 72 小时无跟进的工单自动关闭，状态变为 closed\n    - 关闭时提单人收到通知，通知内容含工单号\n    - 已有回复的工单不被误关\n  failure_handling:\n    - scenario: 通知发送失败\n      handling: 记录失败并在下轮重试，不阻塞关闭\n  status_log:\n    - date: \"2026-09-19\"\n      from: none\n      to: ready\n      by: user\n      version: 1\n      note: 需求确认\n    - date: \"2026-09-20\"\n      from: ready\n      to: in_progress\n      by: impl-agent\n      version: 2\n      note: 开始实现\n```",
+      "expected_output": "收尾后的 YAML：status=done、version=3、status_log 追加一条 to=done 且 version=3、verification 完整（结论 / 逐条 AC / 命令 / 未验部分），校验 0 error。",
+      "files": [],
+      "expectations": [
+        "最终 YAML 的 status 变成 done（不是只在对话里说“完成”，也不是直接跳到 verified）",
+        "最终 YAML 有 verification 段，且 verification.result 是一句带数字的结论（如“3/3 AC 通过，单测 32 passed”）",
+        "verification.acceptance 逐条对照 acceptance_criteria，每项都有 criterion 与 status（pass/fail/not_run），并附证据（命令输出或观测数字）",
+        "没验的压测项标成 not_run，并写进 verification.unverified，不许含糊成“基本都过了”",
+        "verification.verified_by 为 self（执行者自查），verifier 写明执行者标识；没有伪装成 independent/user",
+        "status_log 追加了一条 to=done 的记录：末条 to 等于当前 status，末条 version 等于顶层 version",
+        "version 从 2 变成 3（改状态必须 +1），updated 更新为当天日期",
+        "剩余事项（压测、上线后观察等）写进 follow_ups，而不是只留在对话里",
+        "明确说明 done 只是自查完成，需要独立复核者或用户本人确认后才能改成 verified",
+        "收尾后的 SPEC 通过 validate_spec.py 校验（0 error）"
+      ]
+    },
+    {
+      "id": 10,
+      "name": "user-reports-done",
+      "prompt": "用户列表导出那个功能我这边做完了，测试也过了（44 passed），你帮我看一下吧。SPEC 在 specs/examples/feature-user-export.yaml，现在还是 in_progress 状态。",
+      "expected_output": "agent 主动收尾：跑 spec_status.py（或等价的定向更新）把 status 推到 done，并补齐 verification / status_log / version / updated，而不是只回一句“辛苦了”。",
+      "files": [],
+      "expectations": [
+        "agent 真的动了 SPEC 文件（最终文件里 status 变成 done），不是只口头确认“已完成”就结束",
+        "调用了 scripts/spec_status.py --to done（或明确说明脚本不可用后做了等价的定向更新，并逐项列明改了 status / status_log / version / updated / verification）",
+        "SPEC 原有字段顺序与注释保持不变（没有被 yaml.dump 之类整份重写导致乱序或丢注释）",
+        "verification 逐条列出 acceptance_criteria 的结果与证据；用户只给了一句“44 passed”时，其余条目要么补证据、要么明确标未验证，不能用一个数字糊住所有 AC",
+        "version +1，status_log 追加 to=done 的一条（末条 to==status、末条 version==顶层 version），updated 改成当天",
+        "没有直接标成 verified：用户自己的“做完了”只是自查，verified 需要 independent 或 user 的确认",
+        "告诉用户还差一步（独立复核 / 用户确认）才算真正闭环，并指出未验项",
+        "收尾后 SPEC 通过 validate_spec.py 校验（0 error）"
+      ]
+    },
+    {
+      "id": 11,
+      "name": "field-name-drift",
+      "prompt": "帮我审一下这份 SPEC 能不能用，有问题就直接给我改好的版本：\n\n```yaml\nspec:\n  type: bugfix\n  name: 导出超时\n  id: bugfix-export-timeout\n  version: 2\n  updated: \"2026-09-23\"\n  status: done\n  symptom: 导出 5 万行时 30 秒超时\n  context: 导出接口同步查询整表\n  assumptions: []\n  blocking_questions: []\n  open_questions: []\n  environment:\n    version: v1.4.0\n    runtime: Node 20.11\n  reproduction:\n    steps:\n      - 触发 5 万行导出\n    expected: 30 秒内完成\n    actual: 30 秒超时\n  evidence:\n    - type: log\n      detail: Task timed out after 30000 ms\n      location: export-service/src/job.ts\n  scope:\n    affected: [导出接口]\n    not_affected: [小数据量导出]\n  root_cause:\n    hypothesis: 一次查出全部数据后内存排序\n    confirmed: true\n  fix:\n    approach: 分批查询 + 流式写出\n  regression_tests:\n    - 5 万行导出 30 秒内完成\n  acceptance_criteria:\n    - 5 万行导出 30 秒内完成\n  failure_handling:\n    - scenario: 任务失败\n      handling: 允许重试\n  verified:\n    result: 已修复，导出 12 秒完成\n    verified_by: self\n  implementation:\n    approach: 分批查询 + 流式写出\n  acceptance_evidence:\n    - AC#1 通过\n  known_p2:\n    - 导出进度条没做\n```",
+      "expected_output": "指出 verified / implementation / acceptance_evidence / known_p2 是字段漂移，按标准字段改回 verification / fix（或 verification）/ verification.acceptance / follow_ups，并说明标准字段名。",
+      "files": [],
+      "expectations": [
+        "明确指出 verified、implementation、acceptance_evidence、known_p2 都不是标准顶层字段（字段漂移）",
+        "给出标准字段映射：verified / acceptance_evidence → verification；known_p2 → follow_ups；implementation 的内容归入 fix（或 verification），并说明理由",
+        "修正后的 YAML 顶层不再出现 verified / implementation / acceptance_evidence / known_p2",
+        "status=done 时补齐 verification（result、verified_by、acceptance 每项含 criterion 与 status）与 status_log（末条 to=done、末条 version==顶层 version）",
+        "用 validate_spec.py 跑出“未知顶层字段”的 G6 提示并复述，修正后 0 error",
+        "没有把字段名漂移当成纯格式问题忽略掉，必须显式告诉用户标准字段叫什么"
+      ]
     }
   ]
 }

@@ -3,7 +3,8 @@ spec:
   name: 商品详情接口缓存选型调研
   id: research-detail-cache-choice
   version: 1
-  updated: "2025-09-14"
+  updated: "2026-09-23"
+  # draft = 还在写，或者还有没问过用户的问题（下面 blocking_questions 还没拿到答复）
   status: draft
   related: []
   question: 商品详情接口在高峰 QPS 下变慢，是否应该引入缓存？若引入，选哪种方案？
@@ -12,10 +13,18 @@ spec:
   assumptions:
     - 允许秒级最终一致。
     - 预算允许引入一个 Redis 实例。
+  # 不问就不能开工：这条还没问用户，所以 status 只能停在 draft
   blocking_questions:
-    - 是否接受缓存与 DB 的秒级不一致？若必须强一致，本调研结论不适用。
+    - q: 是否接受缓存与 DB 的秒级不一致？若必须强一致，本调研结论不适用。
+      answered: false
+      asked_at: ""
+      answer: ""
+  # open_questions：status=open 表示"还没问过用户"
   open_questions:
-    - 是否需要同时评估本地缓存（Caffeine）？
+    - q: 是否需要同时评估本地缓存（Caffeine）？
+      status: open
+      asked_at: ""
+      answer: ""
   hypotheses:
     - 热点商品占比高，缓存命中率可达 90% 以上。
     - 慢查询主要来自商品详情的多表 join。
@@ -43,3 +52,14 @@ spec:
   examples:
     - input: 7 天采样显示 Top 1% 商品占 70% 请求
       output: 结论为“引入 Redis + 热点本地缓存”，预计命中率 92%，P95 降至 120ms
+  status_log:
+    - date: "2026-09-23"
+      from: none
+      to: draft
+      by: user
+      version: 1
+      note: 初稿：核心问题、候选方案与决策标准；一致性要求还没问用户
+  # 调研完成后同样要写 verification（结论 + 依据，commands 可以为空）
+  follow_ups:
+    - "F1（中）：若结论是“不引入缓存”，需要把 SQL 优化项单独开一份 refactor SPEC；触发条件：调研结论产出后。"
+    - "F2（低）：本地缓存方案缺生产验证，本次只做压测对比；触发条件：结论倾向 Redis 时附带评估。"

@@ -2,9 +2,10 @@ spec:
   type: bugfix
   name: 优惠券过期导致结算接口 500 且页面卡死
   id: bugfix-coupon-expiry
-  version: 1
-  updated: "2026-09-14"
-  status: ready
+  version: 3
+  updated: "2026-09-23"
+  # done = 执行者自查完成，还没独立复核；复核通过后再改 verified
+  status: done
   related: []
   severity: high
   symptom: 购物车结算时，若所选优惠券已过期，页面持续转圈约 30 秒后报 500，用户无法完成下单。
@@ -13,7 +14,10 @@ spec:
     - 优惠券过期数据未在结算前清理。
   blocking_questions: []
   open_questions:
-    - 是否需要顺带清理用户购物车里已过期的券？暂列为后续任务。
+    - q: 是否需要顺带清理用户购物车里已过期的券？
+      status: answered
+      asked_at: "2026-09-22"
+      answer: 这次只修 500，清理动作单独排期，别扩大改动范围。
   environment:
     version: v2.8.1
     os: Ubuntu 22.04
@@ -68,7 +72,7 @@ spec:
     - 移除优惠券后可正常完成结算，/api/checkout 返回 200
     - 正常优惠券的抵扣金额与修复前一致（示例订单：100 元立减 10 元）
     - 结算相关单元测试与回归用例全部通过
-    - 模拟过期券场景不再出现在 apply.ts:88 的 TypeError
+    - 线上发布后 24 小时内不再出现 apply.ts:88 的 TypeError
   failure_handling:
     - scenario: 优惠券服务不可用
       handling: 降级为不使用优惠券并提示，不阻断下单
@@ -77,3 +81,55 @@ spec:
   examples:
     - input: 结算请求携带过期券 couponId=EXPIRED-1
       output: 返回 400 与错误码 COUPON_EXPIRED，前端提示“优惠券已失效”
+  status_log:
+    - date: "2026-09-22"
+      from: none
+      to: ready
+      by: user
+      version: 1
+      note: 复现步骤与日志齐全，可以开工
+    - date: "2026-09-23"
+      from: ready
+      to: in_progress
+      by: impl-agent
+      version: 2
+      note: 定位到 apply.ts:88 未判空
+    - date: "2026-09-23"
+      from: in_progress
+      to: done
+      by: impl-agent
+      version: 3
+      note: 回归 18 项全绿；AC#5 需要发布后观察 24h，未验部分已写明
+  # 自查完成（verified_by: self）。独立复核者或用户确认通过后，再 --to verified
+  verification:
+    result: 4/5 AC 通过；回归 18 项全绿，过期券返回 400 COUPON_EXPIRED；AC#5 待发布后观察
+    verified_by: self
+    verifier: impl-agent
+    verified_at: "2026-09-23"
+    acceptance:
+      - criterion: "AC#1 原复现步骤不再 500，2 秒内提示“优惠券已失效”"
+        status: pass
+        evidence: "test-coupon-expired@example.com 复现 -> 200ms 返回 400，前端提示正确，无 500"
+      - criterion: "AC#2 移除优惠券后可正常结算，/api/checkout 返回 200"
+        status: pass
+        evidence: "移除后重试 -> 200，订单创建成功（order_id=SO-20260923-771）"
+      - criterion: "AC#3 正常优惠券抵扣金额与修复前一致"
+        status: pass
+        evidence: "100 元订单立减 10 元，与修复前账单一致"
+      - criterion: "AC#4 单测与回归用例全部通过"
+        status: pass
+        evidence: "pnpm --filter coupon-service test -> 18 passed / 0 failed"
+      - criterion: "AC#5 发布后 24h 不再出现 apply.ts:88 TypeError"
+        status: not_run
+        evidence: "待发布；已加日志告警规则 TypeError@apply.ts:88 > 0 触发"
+    commands:
+      - "pnpm --filter coupon-service test -> 18 passed"
+      - "curl -X POST /api/checkout -d '{\"couponId\":\"EXPIRED-1\"}' -> 400 COUPON_EXPIRED"
+    artifacts:
+      - tmp/coupon-expiry-fix-log.txt
+    unverified:
+      # 明确没验的部分：把对应的 criterion 原文带上，校验器才能对上号（R2）
+      - "AC#5 发布后 24h 不再出现 apply.ts:88 TypeError：需发布后观察线上日志，发布窗口 2026-09-24 凌晨；观察期内保持告警开启"
+  follow_ups:
+    - "F1（中）：购物车里已过期的券仍需用户手动移除，顺手清理的改动已按用户答复单独排期；触发条件：本次修复上线观察一周后。"
+    - "F2（低）：coupon-service 其它调用点（下单页预校验）也有类似未判空写法，待排查；触发条件：下次 coupon-service 迭代。"

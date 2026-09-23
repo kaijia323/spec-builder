@@ -2,8 +2,9 @@ spec:
   type: refactor
   name: 收敛订单状态更新逻辑
   id: refactor-order-state
-  version: 1
-  updated: "2026-09-14"
+  version: 2
+  updated: "2026-09-21"
+  # ready = 可以开工：阻塞问题已答复，open_questions 里没有 open
   status: ready
   related: []
   goal: 把散落在 6 个文件里的订单状态流转逻辑收敛到单一状态机模块，消除重复与不一致。
@@ -12,9 +13,22 @@ spec:
   motivation: 规则分散导致状态回退与漏发事件；每次加状态都要改多处。
   assumptions:
     - 外部 API 与事件格式保持不变。
-  blocking_questions: []
+  blocking_questions:
+    - q: 迁移期间是否需要保持旧代码可回滚（保留一段时间双写）？
+      answered: true
+      asked_at: "2026-09-21"
+      answer: 不需要双写，按调用点逐个迁移，每个提交可独立 revert 就行。
   open_questions:
-    - 是否借此机会补齐状态枚举文档？暂列为后续任务。
+    - q: 是否借此机会补齐状态枚举文档？
+      status: answered
+      asked_at: "2026-09-21"
+      answer: 先不做，等状态机落地后再单独提一单文档任务。
+    - q: 并发更新同一订单时，是否要保持"后写覆盖"的现有语义？
+      status: assumed
+      asked_at: "2026-09-21"
+      assumption: 先按保持现状（后写覆盖）实现，不引入乐观锁。
+      if_wrong: 如果业务上要求拒绝旧版本写入，需要给状态机加 version 字段判断，改动会大一圈。
+      confirm_by: 迁移到第 3 个调用点前（预计 2026-09-28）找订单域负责人确认。
   scope:
     affected:
       - order-service 内部状态更新调用点
@@ -49,3 +63,20 @@ spec:
   examples:
     - input: 已支付订单收到“发货”请求
       output: 状态从 paid 变为 shipped 并发出 order.shipped 事件（与重构前一致）
+  # draft 是初稿，ready 表示"问题都问过了、可以开工"
+  status_log:
+    - date: "2026-09-17"
+      from: none
+      to: draft
+      by: user
+      version: 1
+      note: 初稿：现状、行为契约与回滚方案
+    - date: "2026-09-21"
+      from: draft
+      to: ready
+      by: impl-agent
+      version: 2
+      note: 2 个问题问过用户并写回答复，阻塞问题已清空
+  # 还没完成，所以没有 verification；完成时用 spec_status.py --to done 写入
+  follow_ups:
+    - "F1（中）：状态枚举文档缺失，等状态机落地后单独开一单；触发条件：本次重构合并后。"

@@ -1,17 +1,26 @@
 # ops 模板 —— 部署、监控、故障处理、变更
+# 收尾（做完了必须做）：python3 scripts/spec_status.py <本文件> --to done --by <你> \
+#   --note "变更完成，监控指标正常" --result "3/3 AC 通过，错误率无上升" \
+#   --acceptance "AC#1 灰度 10% 无报错|pass|监控面板链接"
 spec:
   type: ops
   name: ""
   id: ops-<slug>
   version: 1
   updated: "2026-09-14"
-  status: draft
+  status: draft          # draft | ready | in_progress | done | verified | blocked
+  blocked_reason: ""     # status=blocked 时必填（G4）
+  status_log: []         # 追加式，不要覆盖历史：每次状态转移加一条 {date, from, to, by, version, note}
   related: []
   goal: ""
   context: ""
   assumptions: []
-  blocking_questions: []
-  open_questions: []
+  blocking_questions: [] # 不问就不能开工。结构：- {q: "这次变更允许停机几分钟？窗口期是什么时候？", answered: false,
+                         #   asked_at: "", answer: ""}；没有要问的就保持 []。
+                         # 纯字符串 = 还没问过用户（会被当成 status: open，ready/done 时被 G1 拦住）
+  open_questions: []     # 可以先做但必须让用户知情。结构：- {q: "...", status: open|answered|assumed,
+                         #   asked_at: "", answer: "", assumption: "", if_wrong: "", confirm_by: ""}
+                         # status=open 表示还没问过用户；assumed 必须填 assumption / if_wrong / confirm_by
 
   target:                # 变更对象
     environment: ""
@@ -39,6 +48,15 @@ spec:
 
   acceptance_criteria:
     - ""
+
+  verification: {}       # G2：status=done/verified 时必须写
+                         # （用 python3 scripts/spec_status.py <本文件> --to done ... 会自动写入）
+                         # 结构：{result: "结论 + 关键数字", verified_by: self|independent|user,
+                         #   verifier: "复核者", verified_at: "YYYY-MM-DD",
+                         #   acceptance: [{criterion: "AC#1 ...", status: pass|fail|not_run, evidence: "..."}],
+                         #   commands: [], artifacts: [], unverified: []}
+
+  follow_ups: []         # 遗留问题：每条写清优先级与触发条件，例如 "F1（高）：回滚脚本未在预发演练"
 
   failure_handling:
     - scenario: ""

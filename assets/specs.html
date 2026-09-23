@@ -1,9 +1,11 @@
 <!doctype html>
 <html lang="zh-CN">
+<!-- spec-builder-viewer: 2 -->
+<!-- 查看器版本标记：ensure_viewer.py 靠它发现项目 specs/ 下的旧版查看器；查看器结构改动时把数字 +1 -->
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<meta name="generator" content="spec-builder / specs.html v1">
+<meta name="generator" content="spec-builder / specs.html v2">
 <title>SPEC 浏览器</title>
 <script src="https://cdn.jsdelivr.net/npm/@tailwindcss/browser@4"></script>
 <script src="https://cdn.jsdelivr.net/npm/js-yaml@4/dist/js-yaml.min.js"></script>
@@ -108,11 +110,13 @@ select.input{cursor:pointer}
 .s-ready{--c:#059669;--c-bg:rgba(16,185,129,.15)}
 .s-in_progress{--c:#2563eb;--c-bg:rgba(59,130,246,.15)}
 .s-done{--c:#0d9488;--c-bg:rgba(20,184,166,.15)}
+.s-verified{--c:#7c3aed;--c-bg:rgba(124,58,237,.16)}
 .s-blocked{--c:#dc2626;--c-bg:rgba(239,68,68,.15)}
 .s-unknown{--c:#64748b;--c-bg:rgba(100,116,139,.16)}
 .dark .s-ready{--c:#34d399}
 .dark .s-in_progress{--c:#60a5fa}
 .dark .s-done{--c:#2dd4bf}
+.dark .s-verified{--c:#a78bfa}
 .dark .s-blocked{--c:#f87171}
 
 /* ---------- 表格 / 列表 ---------- */
@@ -192,6 +196,7 @@ select.input{cursor:pointer}
     </div>
     <div id="filters" style="padding:.7rem 1rem;border-bottom:1px solid var(--border);font-size:.82rem"></div>
     <div id="stats" class="faint" style="padding:.5rem 1rem;font-size:.72rem"></div>
+    <div id="statsNote" class="faint" hidden style="padding:0 1rem .55rem;font-size:.7rem;line-height:1.55"></div>
     <nav id="spec-list"></nav>
   </aside>
   <main id="main">
@@ -199,7 +204,7 @@ select.input{cursor:pointer}
       <div class="card card-pad" style="max-width:34rem;width:100%">
         <h1 style="margin:0;font-size:1.25rem;font-weight:800">SPEC 浏览器</h1>
         <p class="muted" style="font-size:.86rem;margin:.5rem 0 0">
-          一次性读取 <code class="code">specs/</code> 目录下所有符合 spec-builder 规则的 YAML，排版成人类可读的视图，并按规则做校验。本文件只是一份查看器，不会修改任何 SPEC。
+          一次性读取 <code class="code">specs/</code> 目录下所有符合 spec-builder 规则的 YAML，排版成人类可读的视图，并按 <b>G0~G7</b> 规则做校验（与 <code class="code">scripts/validate_spec.py</code> 一致）。本文件只是一份查看器，不会修改任何 SPEC；<b>验收标准的打勾也只存在浏览器本地，不会写回 SPEC</b>——要留下验收结论请用 <code class="code">scripts/spec_status.py</code>。
         </p>
         <div id="dropzone" class="dropzone" style="margin-top:1rem">
           把 <b>specs 文件夹</b>拖到这里，或 <button type="button" id="pickBtn2" class="link">选择文件夹</button>
@@ -224,7 +229,19 @@ select.input{cursor:pointer}
 
 /* ================= 常量：与 scripts/validate_spec.py 对齐 ================= */
 var KNOWN_TYPES=['feature','bugfix','refactor','research','ops'];
-var KNOWN_STATUS=['draft','ready','in_progress','done','blocked'];
+var KNOWN_STATUS=['draft','ready','in_progress','done','verified','blocked'];
+/* 生命周期门槛：与 scripts/validate_spec.py 的 G0~G7 保持一致 */
+var STALE_DAYS=14;
+var ACTIVE_STATUS=['ready','in_progress','done','verified'];
+var LIFECYCLE_KEYS=['blocked_reason','status_log','verification','follow_ups'];
+var ACCEPT_STATUS={pass:'通过',fail:'失败',not_run:'未运行'};
+/* G6 字段漂移：常见别名 → 标准字段（只提示，不自动改） */
+var FIELD_ALIASES={
+  implementation:'verification',acceptance_evidence:'verification',field_evidence:'verification',
+  verified:'verification',result:'verification',evidence_result:'verification',
+  known_p2:'follow_ups',issues:'follow_ups',remaining:'follow_ups'
+};
+var NO_STANDARD_FIELD={sync_targets:'放进 context 或 scope',defects:'放进 context 或 scope'};
 var COMMON_REQUIRED=['type','name','id','version','updated','status','context','acceptance_criteria','failure_handling'];
 var COMMON_PRESENT=['assumptions','blocking_questions','open_questions','related'];
 var TYPE_REQUIRED={
@@ -237,6 +254,14 @@ var TYPE_REQUIRED={
 var NESTED_REQUIRED={
   feature:{outputs:['format']},
   bugfix:{reproduction:['steps','expected','actual'],root_cause:['hypothesis'],fix:['approach']}
+};
+/* 与 scripts/validate_spec.py 的 TYPE_OPTIONAL 保持一致（G6 白名单用） */
+var TYPE_OPTIONAL={
+  feature:['out_of_scope','tools','examples'],
+  bugfix:['examples','steps','severity'],
+  refactor:['examples','out_of_scope','constraints'],
+  research:['examples','hypotheses'],
+  ops:['examples','constraints','out_of_scope']
 };
 var WEAK_WORDS=['正常','合理','流畅','完善','良好','稳定','友好','易用','整洁','差不多','尽量','基本','优化','提升体验'];
 var MEASURABLE=['0','1','2','3','4','5','6','7','8','9','通过','返回','包含','不再','一致','等于','报错','错误码','秒','毫秒','测试','=','P95','覆盖','提示','拒绝','拦截','限制','禁止','条','行','次','无'];
@@ -254,7 +279,8 @@ var STATUS_META={
   draft:{label:'草稿',cls:'s-draft'},
   ready:{label:'就绪',cls:'s-ready'},
   in_progress:{label:'进行中',cls:'s-in_progress'},
-  done:{label:'完成',cls:'s-done'},
+  done:{label:'已完成',cls:'s-done'},
+  verified:{label:'已验证',cls:'s-verified'},
   blocked:{label:'受阻',cls:'s-blocked'},
   unknown:{label:'未知',cls:'s-unknown'}
 };
@@ -267,9 +293,12 @@ var LABELS={
   current_state:'现状',motivation:'动机',behavior_contract:'行为契约（必须保持不变）',rollback:'回滚',
   question:'核心问题',background:'背景',hypotheses:'假设 / 候选答案',methods:'调研方法',deliverables:'交付物',
   decision_criteria:'决策标准',timebox:'时间盒',target:'变更对象',changes:'变更项',risks:'风险',monitoring:'监控',
-  related:'相关链接',severity:'严重程度'
+  related:'相关链接',severity:'严重程度',
+  verification:'验收记录',follow_ups:'遗留问题',status_log:'状态历史',blocked_reason:'受阻原因',
+  result:'结论',verifier:'验证人',verified_at:'验证时间',acceptance:'逐条验收结果',
+  commands:'执行的命令',artifacts:'产出物',unverified:'未验证项'
 };
-var META_KEYS=['type','name','id','version','updated','status','related','severity'];
+var META_KEYS=['type','name','id','version','updated','status','related','severity'].concat(LIFECYCLE_KEYS);
 var BODY_ORDER={
   feature:['goal','context','inputs','outputs','constraints','out_of_scope','tools','steps','acceptance_criteria','failure_handling','examples','assumptions','blocking_questions','open_questions'],
   bugfix:['symptom','context','environment','reproduction','evidence','scope','root_cause','fix','regression_tests','acceptance_criteria','failure_handling','examples','assumptions','blocking_questions','open_questions'],
@@ -324,7 +353,129 @@ function weakItem(item){
   for(i=0;i<MEASURABLE.length;i++){if(s.indexOf(MEASURABLE[i])>=0){return false;}}
   return s.length<25;
 }
-function validateSpec(spec){
+/* ---------- 生命周期门槛的小工具（容错：日期缺失/非法不崩） ---------- */
+function clipText(s,n){s=String(s==null?'':s);n=n||48;return s.length>n?s.slice(0,n)+'…':s;}
+/* R7：criterion 归一化用的标点类与编号正则。
+   与 scripts/validate_spec.py 的行面量逐字一致（用 \xNN，Python 标准库 re 不支持 \p{P}） */
+var PUNCT_RE=/[\x21-\x2f\x3a-\x40\x5b-\x60\x7b-\x7e\u2000-\u206f\u3000-\u303f\uff00-\uffef]/g;
+var AC_ID_RE=/AC\s*[#＃]?\s*\d+(\s*[-–~,、]\s*\d+)*/gi;
+/* 去首尾空白 → 去内部空白 → 统一大小写 → 去尾部标点 */
+function normCriterion(c){
+  var s=String(c==null?'':c).trim().replace(/\s+/g,'').toLowerCase();
+  return s.replace(new RegExp(PUNCT_RE.source+'+$','g'),'');
+}
+/* 剥掉 AC#1 / AC1 / AC 1-3 这类编号引用，再去标点与空白 */
+function criterionBare(c){
+  return normCriterion(c).replace(AC_ID_RE,'').replace(PUNCT_RE,'').replace(/\s+/g,'');
+}
+/* R7.3：报错里说清 answer 当前是什么类型（词表与 Python 的 _answer_type_name 逐字一致） */
+function jsTypeOf(v){
+  if(v===null||v===undefined){return 'null';}
+  if(typeof v==='boolean'){return 'bool';}
+  if(typeof v==='number'){return Number.isInteger(v)?'int':'float';}
+  if(Array.isArray(v)){return 'list';}
+  if(typeof v==='object'){return 'dict';}
+  return typeof v;
+}
+/* 回原文取某个顶层标量的写法：js-yaml 会把 3.0 解析成 3，只能看原文（R5） */
+function rawScalarOf(raw,key){
+  if(typeof raw!=='string'||!raw){return null;}
+  var lines=raw.split(/\r?\n/),i,m;
+  var pat=new RegExp('^\\s*'+key+'\\s*:\\s*(.*)$');
+  var specStart=-1;
+  for(i=0;i<lines.length;i++){if(/^spec\s*:\s*(#.*)?$/.test(lines[i])){specStart=i;break;}}
+  if(specStart>=0){
+    var base=null;
+    for(i=specStart+1;i<lines.length;i++){
+      var line=lines[i];
+      if(!line.trim()||/^\s*#/.test(line)){continue;}
+      var ind=line.match(/^\s*/)[0].length;
+      if(ind===0){break;}
+      if(base==null){base=ind;}
+      if(ind<base){break;}
+      if(ind===base&&(m=pat.exec(line))){return stripInlineComment(m[1]);}
+    }
+    return null;
+  }
+  for(i=0;i<lines.length;i++){if((m=pat.exec(lines[i]))){return stripInlineComment(m[1]);}}
+  return null;
+}
+function stripInlineComment(v){
+  var t=String(v==null?'':v).trim();
+  if(!t){return t;}
+  if(t.charAt(0)!=='"'&&t.charAt(0)!=="'"){var i=t.indexOf(' #');if(i>=0){t=t.slice(0,i).trim();}}
+  return t;
+}
+/* 3.0 / 1e2 这类不是整数的写法（Python 侧 isinstance(version,int) 的等价物） */
+function looksDecimalNumber(t){
+  return /^-?(\d+\.\d*|\.\d+|\d+[eE][-+]?\d+)$/.test(String(t==null?'':t));
+}
+/* R2：not_run 的条目要能在 verification.unverified 里找到（criterion 文本或前 8 个字匹配） */
+function unverifiedMentions(verification,criterion){
+  var c=String(criterion==null?'':criterion);
+  if(isBlank(c)){return true;}   /* criterion 为空时另有 G2 error，这里不重复报 */
+  var text=asArr(verification&&verification.unverified).map(function(u){return String(u==null?'':u);}).join(' ');
+  return text.indexOf(c)>=0;     /* 与 Python 完全一致：criterion 必须出现在 unverified 文本里 */
+}
+function daysSince(s){
+  if(s==null||typeof s!=='string'){return null;}
+  var m=/^(\d{4})-(\d{2})-(\d{2})/.exec(s.trim());
+  if(!m){return null;}
+  var y=+m[1],mo=+m[2],d=+m[3];
+  if(mo<1||mo>12||d<1||d>31){return null;}
+  var t=new Date(y,mo-1,d);
+  if(isNaN(t.getTime())){return null;}
+  var now=new Date();
+  var today=new Date(now.getFullYear(),now.getMonth(),now.getDate());
+  return Math.round((today.getTime()-t.getTime())/86400000);
+}
+function normOpenQuestions(v){
+  return asArr(v).map(function(item,i){
+    if(isObj(item)){
+      var st;
+      if(item.status==null){
+        /* 老写法只有 answered/answer：答过就算 answered，否则视为没问过（与 Python norm_open 一致） */
+        st=(item.answered===true||!isBlank(item.answer))?'answered':'open';
+      }else{
+        st=String(item.status);  /* 写了但写错的值保留原样，交给 G1 报"不是合法取值" */
+      }
+      var q=item.q==null?(item.question==null?'':item.question):item.q;
+      return {i:i,q:String(q),status:st,obj:item,plain:false};
+    }
+    /* 兼容：纯字符串 = {q, status: open}，即"问都没问过" */
+    return {i:i,q:String(item==null?'':item),status:'open',obj:null,plain:true};
+  });
+}
+function unansweredBlockingList(v){
+  var out=[];
+  asArr(v).forEach(function(b,i){
+    if(!isObj(b)){if(!isBlank(b)){out.push({i:i,text:String(b)});}return;}
+    if(b.answered!==true){out.push({i:i,text:String(b.q==null?'':b.q)});}
+  });
+  return out;
+}
+function specMarks(spec){
+  spec=spec||{};
+  var st=spec.status;
+  var qs=normOpenQuestions(spec.open_questions);
+  var log=asArr(spec.status_log);
+  var stale=null;
+  if(st==='ready'||st==='in_progress'){
+    var last=log.length?log[log.length-1]:null;
+    stale=daysSince(isObj(last)?last.date:null);
+    if(stale==null){stale=daysSince(spec.updated);}
+  }
+  return {
+    unasked:qs.filter(function(q){return q.status==='open';}).length,
+    assumed:qs.filter(function(q){return q.status==='assumed';}).length,
+    answered:qs.filter(function(q){return q.status==='answered';}).length,
+    blockingOpen:unansweredBlockingList(spec.blocking_questions).length,
+    staleDays:stale,
+    hasVerification:isObj(spec.verification)&&!isBlank(spec.verification.result),
+    logCount:log.length
+  };
+}
+function validateSpec(spec,raw){
   var errors=[],warnings=[],checks=[];
   var stype=spec.type;
   if(KNOWN_TYPES.indexOf(stype)<0){
@@ -333,7 +484,9 @@ function validateSpec(spec){
   }
   checks.push('type = '+stype);
   var status=spec.status;
-  if(KNOWN_STATUS.indexOf(status)<0){warnings.push('status 非法或缺失：'+JSON.stringify(status)+'；建议取值 '+KNOWN_STATUS.join('/'));}
+  var statusOk=KNOWN_STATUS.indexOf(status)>=0;
+  /* G0 类型与枚举合法：status 非法或缺失已从 warning 升级为 error */
+  if(!statusOk){errors.push('G0: status 缺失或非法：'+JSON.stringify(status)+'；应为 '+KNOWN_STATUS.join(' / '));}
   else{checks.push('status = '+status);}
 
   COMMON_REQUIRED.concat(TYPE_REQUIRED[stype]||[]).forEach(function(f){
@@ -352,11 +505,17 @@ function validateSpec(spec){
   }
 
   var version=spec.version;
-  if(typeof version!=='number'||!isFinite(version)||Math.floor(version)!==version||version<1){warnings.push('version 应为 >= 1 的整数：'+JSON.stringify(version));}
+  /* R5：js-yaml 把 3.0 解析成 3，要回原文看写法，结论才和 CLI 一致 */
+  var versionRaw=rawScalarOf(raw,'version');
+  var versionText=versionRaw==null?'':versionRaw.replace(/^["']|["']$/g,'');
+  var versionIsFloat=versionText!==''&&looksDecimalNumber(versionText);
+  if(typeof version!=='number'||!isFinite(version)||Math.floor(version)!==version||version<1||versionIsFloat){
+    warnings.push('version 应为 >= 1 的整数：'+(versionIsFloat?versionText:JSON.stringify(version)));
+  }
   var updated=spec.updated;
   if(typeof updated!=='string'||!/^\d{4}-\d{2}-\d{2}$/.test(updated)){warnings.push('updated 应为 YYYY-MM-DD：'+JSON.stringify(updated));}
 
-  if(status==='ready'&&!isBlank(spec.blocking_questions)){errors.push('status=ready 但 blocking_questions 非空；请先解决阻塞问题，或把 status 改为 draft');}
+  /* G8（原就绪门槛 ready + blocking_questions 非空）已被 G1 取代：语义更强，逐条查 answered */
 
   var nested=NESTED_REQUIRED[stype]||{};
   Object.keys(nested).forEach(function(parent){
@@ -393,6 +552,194 @@ function validateSpec(spec){
     var mon=asArr(spec.monitoring);
     if(mon.length&&mon.some(isBlank)){warnings.push('monitoring 条目不完整');}
   }
+
+  /* ================= 生命周期门槛 G1~G7（与 scripts/validate_spec.py 的 G1~G7 保持一致） =================
+     归属（与 Python 逐条对齐）：
+       G1  ready/in_progress 可开工；done/verified 时由 G2 复用（不许有没问过用户的问题）
+       G2  done/verified 有据；assumed 的 if_wrong/confirm_by 必填；status_log 末条 to 不一致时门槛号也是 G2
+       G3  verified 必须 independent/user + verifier + verified_at，且没有 fail
+       G4  blocked 必须有 blocked_reason
+       G5  status_log 末条 to（非 done/verified 时）/ version 与顶层对齐；缺失只 warning
+       G6  未知顶层字段 warning（白名单与 Python 的 TYPE_REQUIRED/TYPE_OPTIONAL/META_FIELDS 一致）
+       G7  ready/in_progress 超过 STALE_DAYS 天没动 → warning
+       G8  已被 G1 取代（原 ready + blocking_questions 非空） */
+  var blocking=asArr(spec.blocking_questions);
+  var openQs=normOpenQuestions(spec.open_questions);
+  var verification=isObj(spec.verification)?spec.verification:null;
+  var logEntries=asArr(spec.status_log).filter(isObj);
+  /* Python 里 None 与缺失等价，用 pyEq 模拟（版本号写 "3" 这种漂移也要报出来） */
+  function pyEq(a,b){if(a==null&&b==null){return true;}return a===b;}
+
+  /* G1 可以开工：blocking_questions 全部 answered；open_questions 没有 open，且 status 取值合法 */
+  if(status==='ready'||status==='in_progress'||status==='done'||status==='verified'){
+    blocking.forEach(function(b,i){
+      var answered=isObj(b)?(b.answered===true):false;
+      if(!answered){
+        errors.push('G1: blocking_questions 第 '+(i+1)+' 条还没拿到答复：'+clipText(isObj(b)?(b.q==null?'':b.q):b)
+          +'。下一步：用提问工具问用户，把答复原话写进 answer 并把 answered 改成 true');
+        return;
+      }
+      /* R1 + R7.3：不能只写 answered: true 就假装问过；answer 还必须是字符串 */
+      if(typeof b.answer!=='string'){
+        errors.push('G1: blocking_questions 第 '+(i+1)+' 条标了 answered: true，但 answer 必须是字符串（当前是 '+jsTypeOf(b.answer)+'）——把用户原话写成文本，例如 answer: "50 MB，超了就分批"');
+      }else if(isBlank(b.answer)){
+        errors.push('G1: blocking_questions 第 '+(i+1)+' 条标了 answered: true，但 answer 是空的——你说问过用户了，用户原话是什么？把答复原话填进 answer，问完再标已答复');
+      }
+      if(isBlank(b.asked_at)){
+        warnings.push('G1: blocking_questions 第 '+(i+1)+' 条标了已答复，但没写 asked_at（什么时候问的）');
+      }
+    });
+    openQs.forEach(function(q){
+      if(q.status==='open'){
+        errors.push('G1: open_questions 第 '+(q.i+1)+' 条仍是 open（= 还没问过用户）：'+clipText(q.q)
+          +'。下一步：用提问工具问用户，把答复原话写进 answer 并把 status 改成 answered；用户明确说先做时改成 assumed，并填 assumption / if_wrong / confirm_by');
+      }else if(['open','answered','assumed'].indexOf(q.status)<0){
+        errors.push('G1: open_questions 第 '+(q.i+1)+' 条 status='+JSON.stringify(q.status)+' 不是合法取值（open | answered | assumed）');
+      }else if(q.status==='answered'){
+        /* R1 + R7.3：answered 必须有用户原话，而且必须是字符串 */
+        var qa=q.obj||{};
+        if(typeof qa.answer!=='string'){
+          errors.push('G1: open_questions 第 '+(q.i+1)+' 条 status=answered，但 answer 必须是字符串（当前是 '+jsTypeOf(qa.answer)+'）——把用户原话写成文本，例如 answer: "50 MB，超了就分批"');
+        }else if(isBlank(qa.answer)){
+          errors.push('G1: open_questions 第 '+(q.i+1)+' 条 status=answered，但 answer 是空的——把用户原话填进 answer，不要用自己的判断代替（用户没答就保持 open）');
+        }
+        if(isBlank(qa.asked_at)){
+          warnings.push('G1: open_questions 第 '+(q.i+1)+' 条 status=answered，但没写 asked_at（什么时候问的）');
+        }
+      }
+    });
+  }
+
+  /* G2 完成必须有据 */
+  if(status==='done'||status==='verified'){
+    if(blocking.length){
+      errors.push('G2: status='+status+' 但仍挂着 '+blocking.length+' 条 blocking_questions（第 1 条：'+clipText(isObj(blocking[0])?(blocking[0].q==null?'':blocking[0].q):blocking[0])
+        +'）。已答复的阻塞问题，其结论要落进 context / acceptance_criteria / follow_ups，不能只留在问题列表里');
+    }
+    if(!verification){
+      errors.push('G2: status='+status+' 但没有 verification（或 verification 不是映射）：跑 scripts/spec_status.py --to '+status
+        +' --by <你> --note "3 项 AC 全过" --result "一句话结论+关键数字" --acceptance "AC#1 描述|pass|证据" 可一次补齐');
+    }else{
+      if(isBlank(verification.result)){errors.push('G2: status='+status+' 但 verification.result 为空；补一句结论+关键数字');}
+      var acc=asArr(verification.acceptance);
+      if(isBlank(acc)){
+        errors.push('G2: status='+status+' 但 verification.acceptance 为空；逐条对照 acceptance_criteria 写 criterion / status(pass|fail|not_run) / evidence');
+      }else{
+        var seenCrit={};
+        acc.forEach(function(a,i){
+          if(!isObj(a)){errors.push('G2: verification.acceptance 第 '+(i+1)+' 条不是映射；应为 {criterion, status, evidence}');return;}
+          if(isBlank(a.criterion)){
+            errors.push('G2: verification.acceptance 第 '+(i+1)+' 条 criterion 为空；每条都要写清对应哪条验收标准');
+          }else{
+            /* R7.1 复制粘贴查重（归一化后相同就提示；3 条以上各报一条，都指向首次出现的那条） */
+            var nc=normCriterion(a.criterion);
+            if(nc){
+              if(seenCrit[nc]!=null){
+                warnings.push('G2: 第 '+(seenCrit[nc]+1)+'、'+(i+1)+' 条验收结论的 criterion 一模一样，像是复制粘贴；每条 AC 要写它自己的实际结论');
+              }else{seenCrit[nc]=i;}
+            }
+            /* R7.2 只剩编号：剥掉 AC#1 / AC1 / AC 1-3 之后没剩什么内容 */
+            if(criterionBare(a.criterion).length<2){
+              warnings.push('G2: 第 '+(i+1)+' 条验收结论的 criterion 只有编号，看不出验的是什么；请写上 AC 的原文或这条的实际结论');
+            }
+          }
+          var ast=String(a.status==null?'':a.status);
+          if(!ACCEPT_STATUS.hasOwnProperty(ast)){
+            errors.push('G2: verification.acceptance 第 '+(i+1)+' 条 status='+JSON.stringify(a.status==null?'':a.status)+' 非法或缺失；应为 pass | fail | not_run');
+            return;
+          }
+          /* R2：pass/fail 必须给证据；not_run 必须进 unverified */
+          if((ast==='pass'||ast==='fail')&&isBlank(a.evidence)){
+            errors.push('G2: verification.acceptance 第 '+(i+1)+' 条 status='+ast+'，但没有 evidence——通过/失败都要给出命令输出、观测数字或路径');
+          }
+          if(ast==='not_run'&&!unverifiedMentions(verification,a.criterion)){
+            warnings.push('G2: verification.acceptance 第 '+(i+1)+' 条是 not_run，但没写进 verification.unverified——说清哪部分没验、为什么');
+          }
+        });
+        /* R2：条数要跟 acceptance_criteria 对得上（与 Python 一致：只在 acceptance 非空时比对） */
+        var acCount=asArr(spec.acceptance_criteria).length;
+        if(acCount){
+          if(acc.length<acCount){
+            errors.push('G2: verification.acceptance 只有 '+acc.length+' 条，而 acceptance_criteria 有 '+acCount+' 条——要逐条对照。确实想合并成一条结论的，就把 acceptance_criteria 合并成一条，而不是用一条结论盖住 '+acCount+' 条标准');
+          }else if(acc.length>acCount){
+            warnings.push('G2: verification.acceptance 有 '+acc.length+' 条，比 acceptance_criteria（'+acCount+' 条）还多；确认不是 AC 漏写了');
+          }
+        }
+      }
+    }
+    /* assumed 是知情假设：if_wrong / confirm_by 必填（error），assumption 必填（warning） */
+    openQs.forEach(function(q){
+      if(q.status!=='assumed'){return;}
+      var o=q.obj||{};
+      [['if_wrong','假设错了会怎样'],['confirm_by','最迟什么时候回头确认']].forEach(function(pair){
+        if(isBlank(o[pair[0]])){errors.push('G2: open_questions 第 '+(q.i+1)+' 条是 assumed（知情假设）但缺 '+pair[0]+'（'+pair[1]+'）');}
+      });
+      if(isBlank(o.assumption)){warnings.push('G2: open_questions 第 '+(q.i+1)+' 条是 assumed 但 assumption 为空；写清按什么假设推进');}
+    });
+    if(status==='done'&&verification&&!isBlank(verification.verified_by)&&String(verification.verified_by)!=='self'){
+      warnings.push('G2: status=done 但 verification.verified_by='+JSON.stringify(verification.verified_by)+'；done 表示自查（verified_by: self），已有独立复核/用户确认请改标 verified');
+    }
+  }
+
+  /* G3 已验证要有人 */
+  if(status==='verified'){
+    var ver=verification||{};
+    var by=ver.verified_by;
+    if(['independent','user'].indexOf(String(by==null?'':by))<0){
+      errors.push('G3: status=verified 但 verification.verified_by='+JSON.stringify(by==null?'':by)+'；verified 必须由独立复核者或用户确认（independent | user），自查只能标 done');
+    }
+    if(isBlank(ver.verifier)){errors.push('G3: status=verified 但 verification.verifier 为空；写清是谁复核的（agent 名 / 人名）');}
+    if(isBlank(ver.verified_at)){errors.push('G3: status=verified 但 verification.verified_at 为空；复核日期写 YYYY-MM-DD');}
+    var failed=asArr(ver.acceptance).filter(function(a){return isObj(a)&&a.status==='fail';});
+    if(failed.length){errors.push('G3: verification.acceptance 里有 '+failed.length+' 条 fail；有失败项不能标 verified：降级为 done，并把失败项写进 verification.unverified 与 follow_ups');}
+  }
+
+  /* G4 受阻要说原因 */
+  if(status==='blocked'&&isBlank(spec.blocked_reason)){errors.push('G4: status=blocked 但 blocked_reason 为空；写清卡在哪、需要谁做什么');}
+
+  /* G5 状态要留痕：末条 to / version 与顶层对齐；缺失或为空只告警（老语料都没有 status_log） */
+  if(!logEntries.length){
+    if(statusOk&&status!=='draft'){
+      warnings.push('G5: 没有 status_log（历史 SPEC）：看不出状态是什么时候、被谁改的。建议补一条最近的状态转移，之后用 scripts/spec_status.py 推进状态会自动追加');
+    }
+  }else{
+    var lastLog=logEntries[logEntries.length-1];
+    if(!pyEq(lastLog.to,status)){
+      /* 与 Python 一致：done/verified 时这条毛病归 G2，其余状态归 G5，只报一次 */
+      var toGate=(status==='done'||status==='verified')?'G2':'G5';
+      errors.push(toGate+': status_log 最后一条是 to='+JSON.stringify(lastLog.to==null?'':lastLog.to)+'，与当前 status='+JSON.stringify(status==null?'':status)
+        +' 不一致；手改 status 不算数，用 scripts/spec_status.py --to '+String(status==null?'':status)+' --by <你> --note "..." 让脚本同时改 status/version/updated/status_log');
+    }
+    if(!pyEq(lastLog.version,spec.version)){
+      errors.push('G5: status_log 最后一条 version='+JSON.stringify(lastLog.version==null?'':lastLog.version)+' 与顶层 version='+JSON.stringify(spec.version==null?'':spec.version)+' 不一致；改状态必须同时 version +1');
+    }
+  }
+
+  /* G6 字段不要漂移：白名单 = COMMON_REQUIRED + COMMON_PRESENT + META_FIELDS + TYPE_REQUIRED + TYPE_OPTIONAL（与 Python 一致） */
+  var allowed={};
+  COMMON_REQUIRED.concat(COMMON_PRESENT,LIFECYCLE_KEYS,TYPE_REQUIRED[stype]||[],TYPE_OPTIONAL[stype]||[]).forEach(function(k){allowed[k]=1;});
+  Object.keys(spec).forEach(function(k){
+    if(allowed[k]){return;}
+    if(FIELD_ALIASES[k]){warnings.push('G6: 疑似字段漂移：未知顶层字段 '+JSON.stringify(k)+'，标准字段是 '+JSON.stringify(FIELD_ALIASES[k])+'；把验收结论/证据搬进去，不要自创字段名');}
+    else if(NO_STANDARD_FIELD[k]){warnings.push('G6: 疑似字段漂移：未知顶层字段 '+JSON.stringify(k)+'，没有对应的标准字段；请'+NO_STANDARD_FIELD[k]);}
+    else{warnings.push('G6: 未知顶层字段 '+JSON.stringify(k)+'。标准字段见 references/spec-field-guide.md，不用就删掉');}
+  });
+
+  /* G7 状态别放烂：ready / in_progress 超过 STALE_DAYS 天没动 → warning */
+  if(status==='ready'||status==='in_progress'){
+    var when=logEntries.length?logEntries[logEntries.length-1].date:null;
+    var src='status_log 末条 date';
+    if(isBlank(when)){when=spec.updated;src='updated（没有 status_log）';}
+    var since=daysSince(when);
+    if(since!=null&&since>STALE_DAYS){
+      warnings.push('G7: status='+status+' 但最后一次状态变动是 '+String(when)+'（'+src+'，'+since+' 天前，阈值 '+STALE_DAYS+' 天）；确认是"做完了没改状态"还是卡住了——做完立刻跑 scripts/spec_status.py --to done，卡住则 --to blocked --reason "..."');
+    }
+  }
+
+  /* 与 Python 侧一致：不属于 G1~G7 的基础结构/质量类信息统一归 G0 */
+  function tagG0(m){return /^G\d: /.test(m)?m:('G0: '+m);}
+  errors=errors.map(tagG0);
+  warnings=warnings.map(tagG0);
   return {errors:errors,warnings:warnings,checks:checks};
 }
 
@@ -413,8 +760,9 @@ function buildRecord(e){
   rec.spec=spec;rec.isSpec=true;rec.type=(KNOWN_TYPES.indexOf(spec.type)>=0)?spec.type:'unknown';
   rec.id=spec.id?String(spec.id):'';
   if(spec.name){rec.name=String(spec.name);}
-  var v=validateSpec(spec);
+  var v=validateSpec(spec,rec.raw);
   rec.errors=v.errors;rec.warnings=v.warnings;rec.checks=v.checks;
+  rec.marks=specMarks(spec);
   return rec;
 }
 function ingest(entries){
@@ -475,7 +823,7 @@ function listItem(rec){
   return '<button class="side-item'+active+'" data-path="'+escAttr(rec.path)+'">'
     +'<span class="side-item-name">'+esc(rec.name)+'</span>'
     +'<span class="side-item-meta">'+esc(rec.id||rec.path)+'</span>'
-    +'<span class="side-item-badges">'+chip(t.cls,t.label)+'<span class="chip '+st.cls+'">'+st.label+'</span>'+issues+'</span>'
+    +'<span class="side-item-badges">'+chip(t.cls,t.label)+'<span class="chip '+st.cls+'">'+st.label+'</span>'+statusMarkBadges(rec)+issues+'</span>'
     +'</button>';
 }
 function renderList(){
@@ -498,9 +846,25 @@ function renderList(){
   $('spec-list').innerHTML=h;
 }
 function renderStats(){
-  var valid=0,errs=0,warns=0;
-  state.specs.forEach(function(r){if(r.isSpec){valid++;}errs+=r.errors.length;warns+=r.warnings.length;});
-  $('stats').textContent=valid+' 份 SPEC · '+errs+' error · '+warns+' warning';
+  var valid=0,errs=0,warns=0,review=0,verified=0,unasked=0;
+  state.specs.forEach(function(r){
+    if(r.isSpec){valid++;}
+    errs+=r.errors.length;warns+=r.warnings.length;
+    var mk=r.marks||{};var st=r.spec&&r.spec.status;
+    if(st==='done'){review++;}
+    if(st==='verified'){verified++;}
+    if(mk.unasked){unasked+=mk.unasked;}
+  });
+  $('stats').textContent=valid+' 份 SPEC · '+errs+' error · '+warns+' warning'
+    +(review?(' · '+review+' 待复核'):'')
+    +(verified?(' · '+verified+' 已验证'):'')
+    +(unasked?(' · '+unasked+' 个问题没问过'):'');
+  /* 老 SPEC 会显示一大片 error，这里给一句解释，免得以为工具坏了（G1/G2 正是要暴露这些） */
+  var note=$('statsNote');
+  if(note){
+    note.hidden=!errs;
+    note.innerHTML=errs?('历史 SPEC 显示 error 属正常：多为缺少 <code class="code">status_log</code> / <code class="code">verification</code>，或者还带着没问过用户的问题——这些正是要暴露的。只想看结构问题可跑 <code class="code">python3 scripts/validate_spec.py &lt;spec&gt; --lenient</code>。'):'';
+  }
 }
 
 /* ================= 详情渲染 ================= */
@@ -517,7 +881,7 @@ function renderHeader(rec){
   var s=rec.spec;
   var t=TYPE_META[rec.type]||TYPE_META.unknown;
   var st=STATUS_META[s.status]||STATUS_META.unknown;
-  var h='<div style="display:flex;flex-wrap:wrap;gap:.4rem;align-items:center">'+chip(t.cls,t.label)+'<span class="chip '+st.cls+'">'+st.label+'</span>';
+  var h='<div style="display:flex;flex-wrap:wrap;gap:.4rem;align-items:center">'+chip(t.cls,t.label)+'<span class="chip '+st.cls+'">'+st.label+'</span>'+statusMarkBadges(rec);
   if(s.severity){h+='<span class="chip t-bugfix">severity: '+esc(s.severity)+'</span>';}
   h+='</div>';
   h+='<h1 style="margin:.6rem 0 0;font-size:1.6rem;line-height:1.25;font-weight:800">'+esc(s.name||rec.name)+'</h1>';
@@ -537,13 +901,188 @@ function renderValidation(rec){
   if(!n&&!w){return '<div style="margin-top:1rem">'+callout('ok','规则校验通过','<span class="muted">未发现 error / warning。</span>')+'</div>';}
   var h='<details style="margin-top:1rem"'+(n?' open':'')+'><summary class="val-summary">';
   h+='<span class="badge '+(n?'badge-err':'badge-warn')+'">'+(n?n+' error':'')+(n&&w?' · ':'')+(w?w+' warning':'')+'</span>';
-  h+='<span class="muted" style="font-size:.82rem">规则校验（validate_spec.py）</span></summary>';
+  h+='<span class="muted" style="font-size:.82rem">规则校验 G0~G7（与 scripts/validate_spec.py 一致）</span></summary>';
   h+='<div style="display:grid;gap:.5rem;margin-top:.6rem">';
   rec.errors.forEach(function(x){h+=issue('err',x);});
   rec.warnings.forEach(function(x){h+=issue('warn',x);});
   h+='</div></details>';
   return h;
 }
+
+/* ================= 生命周期：状态历史 / 验收记录 / 遗留问题 ================= */
+function statusMarkBadges(rec){
+  var s=rec.spec||{};var mk=rec.marks||specMarks(s);var h='';
+  if(s.status==='done'){h+='<span class="badge badge-warn" title="执行者自查完成，还没独立复核">待复核</span>';}
+  if(s.status==='verified'){h+='<span class="badge badge-ok" title="已有独立复核者或用户本人确认">✓ 已验证</span>';}
+  if(mk.unasked){h+='<span class="badge badge-err" title="open_questions 里还有没问过用户的条目；进 ready 前必须先问">'+mk.unasked+' 个问题没问过</span>';}
+  if(mk.staleDays!=null&&mk.staleDays>STALE_DAYS){h+='<span class="badge badge-warn" title="status_log / updated 显示状态很久没更新">'+mk.staleDays+' 天没动</span>';}
+  if((s.status==='done'||s.status==='verified')&&!mk.hasVerification){h+='<span class="badge badge-err">没有验收记录</span>';}
+  return h;
+}
+function accBadge(st){
+  var v=String(st==null?'':st);
+  var cls=v==='pass'?'badge-ok':(v==='fail'?'badge-err':'badge-warn');
+  return '<span class="badge '+cls+'">'+esc(ACCEPT_STATUS[v]||v||'—')+'</span>';
+}
+function statusChip(st){
+  var key=String(st==null?'':st);
+  var meta=STATUS_META[key];
+  var cls=meta?meta.cls:'s-unknown';
+  return '<span class="chip '+cls+'">'+esc(meta?meta.label:key)+'</span>';
+}
+function renderStatusLog(rec){
+  var log=asArr(rec.spec.status_log);
+  if(!log.length){
+    if(rec.spec.status&&rec.spec.status!=='draft'){
+      return section('status_log','状态历史',callout('warn','缺少状态历史（status_log）','看不出这个状态是什么时候、被谁改的。建议跑一次 <code class="code">scripts/spec_status.py</code> 补上。'));
+    }
+    return '';
+  }
+  var rows=log.map(function(e){
+    if(!isObj(e)){return [inline(String(e)),'','','',''];}
+    var toHtml=(e.from?'<span class="muted">'+esc(String(e.from))+'</span> → ':'')+statusChip(e.to);
+    return [esc(e.date==null?'—':String(e.date)),toHtml,esc(e.by==null?'—':String(e.by)),e.version==null?'—':('v'+esc(e.version)),inline(e.note==null?'—':String(e.note))];
+  });
+  return section('status_log','状态历史',table(['日期','转移','谁改的','版本','说明'],rows));
+}
+function renderVerification(rec){
+  var s=rec.spec;
+  var need=(s.status==='done'||s.status==='verified');
+  var v=isObj(s.verification)?s.verification:null;
+  if(!v){
+    if(!need){
+      if(s.status==='blocked'){return '';}
+      return section('verification','验收记录','<p class="muted" style="font-size:.85rem;margin:0">还没收尾，没有验收记录。完成时用 <code class="code">scripts/spec_status.py --to done --result "…" --acceptance "AC#1|pass|证据"</code> 一次写入结论与逐条 AC。</p>');
+    }
+    return section('verification','验收记录',callout('err','此 SPEC 没有验收记录','status='+esc(s.status)+' 必须有 verification：一句话结论 + 逐条 AC 结果与证据。跑 <code class="code">scripts/spec_status.py --to '+esc(s.status)+' --result "…" --acceptance "AC#1|pass|证据"</code> 一次补齐。'));
+  }
+  var h='<div class="card card-pad">';
+  h+=kv('结论',isBlank(v.result)?'<span class="badge badge-err">没有结论（result）</span>':'<div class="prose">'+inline(v.result)+'</div>');
+  var byMap={self:'自查（self）',independent:'独立复核（independent）',user:'用户本人（user）'};
+  var byTxt=byMap[String(v.verified_by==null?'':v.verified_by)]||(isBlank(v.verified_by)?'<span class="badge badge-err">未填写 verified_by</span>':esc(String(v.verified_by)));
+  var who=byTxt+(isBlank(v.verifier)?'':' · '+esc(String(v.verifier)))+(isBlank(v.verified_at)?'':' · '+esc(String(v.verified_at)));
+  h+=kv('验证人',who);
+  var acc=asArr(v.acceptance);
+  if(acc.length){
+    var rows=acc.map(function(a,i){
+      if(!isObj(a)){return [String(i+1),'<div class="prose">'+inline(String(a))+'</div>','',''];}
+      var ast=String(a.status==null?'':a.status);
+      var ev;
+      if(isBlank(a.evidence)){
+        ev=(ast==='pass'||ast==='fail')?'<span class="badge badge-err">缺证据</span>':'<span class="muted">—</span>';
+      }else{
+        ev='<div class="prose">'+inline(a.evidence)+'</div>';
+      }
+      if(ast==='not_run'&&!unverifiedMentions(v,a.criterion)){ev+=' <span class="badge badge-warn">没进 unverified</span>';}
+      return [String(i+1),'<div class="prose">'+inline(a.criterion==null?'—':a.criterion)+'</div>',accBadge(a.status),ev];
+    });
+    h+=kv('逐条 AC 结果',table(['#','验收标准','结果','证据'],rows));
+    var acN=asArr(s.acceptance_criteria).length;
+    if(acc.length<acN){
+      h+=kv('对照完整度','<span class="badge badge-err">只对照了 '+acc.length+' / '+acN+' 条验收标准</span> <span class="muted">逐条对照才算数</span>');
+    }else if(acc.length>acN){
+      h+=kv('对照完整度','<span class="badge badge-warn">验收记录 '+acc.length+' 条 > 验收标准 '+acN+' 条</span> <span class="muted">可能 AC 漏写了</span>');
+    }
+  }else{
+    h+=kv('逐条 AC 结果','<span class="badge badge-err">没有逐条结果（acceptance）</span>');
+  }
+  if(asArr(v.commands).length){h+=kv('跑过的命令',renderBullets(v.commands));}
+  if(asArr(v.artifacts).length){h+=kv('产出物',renderBullets(v.artifacts));}
+  h+='</div>';
+  var extra='';
+  if(asArr(v.unverified).length){extra+=callout('warn','明确没验的部分',renderBullets(v.unverified));}
+  if(s.status==='done'){extra+=callout('warn','待独立复核','这是执行者自查（done）。要有独立复核者或用户本人确认后才能升到 <b>verified</b>：<code class="code">scripts/spec_status.py --to verified --verify-by independent --verifier &lt;谁&gt;</code>。');}
+  if(extra){h+='<div style="margin-top:.6rem;display:grid;gap:.6rem">'+extra+'</div>';}
+  return section('verification','验收记录',h);
+}
+function renderFollowUps(rec){
+  var items=asArr(rec.spec.follow_ups);
+  var inner=items.length
+    ?callout('warn',items.length+' 条遗留问题（写清优先级与触发条件）','<ul class="bullets">'+items.map(function(x){return '<li>'+formatScalar(x)+'</li>';}).join('')+'</ul>')
+    :'<p class="muted" style="font-size:.85rem;margin:0">（无遗留问题）</p>';
+  return section('follow_ups','遗留问题',inner);
+}
+function renderLifecycle(rec){
+  var s=rec.spec;var h='';
+  if(s.status==='blocked'){
+    h+=callout('err','受阻原因',isBlank(s.blocked_reason)?'<span>status=blocked 但没写 blocked_reason</span>':'<div class="prose">'+inline(s.blocked_reason)+'</div>');
+  }
+  h+=renderStatusLog(rec);
+  h+=renderVerification(rec);
+  h+=renderFollowUps(rec);
+  return h;
+}
+function maybeMissing(x,label){
+  if(isBlank(x)){return '<span class="badge badge-err">缺 '+esc(label)+'</span>';}
+  return '<div class="prose">'+inline(x)+'</div>';
+}
+function renderBlockingQuestions(k,title,v){
+  var items=asArr(v);
+  if(!items.length){return section(k,title,'<p class="muted" style="font-size:.85rem;margin:0">（空）</p>');}
+  var h='<div style="display:grid;gap:.5rem">'+items.map(function(x,i){
+    if(!isObj(x)){
+      return '<div class="callout callout-err"><div style="display:flex;gap:.5rem"><span>⛔</span><div><div class="prose"><span class="badge badge-err">未答复</span> '+inline(String(x))+'</div><div class="muted" style="font-size:.78rem">纯字符串写法等于"还没问过用户"；请改成 {q, answered, asked_at, answer}</div></div></div></div>';
+    }
+    var ok=(x.answered===true);
+    var badge=ok
+      ?(isBlank(x.answer)?'<span class="badge badge-err">已答复但没写用户原话</span>':'<span class="badge badge-ok">已答复</span>')
+      :'<span class="badge badge-err">未答复（不能进 ready）</span>';
+    var body='<div class="prose">'+badge+' 第 '+(i+1)+' 条：'+inline(x.q==null?'—':x.q)+'</div>';
+    if(!isBlank(x.asked_at)){body+='<div class="muted" style="font-size:.78rem">提问日期：'+esc(String(x.asked_at))+'</div>';}
+    if(!isBlank(x.answer)){body+='<div class="prose" style="font-size:.84rem;margin-top:.2rem">用户答复：'+inline(x.answer)+'</div>';}
+    else if(ok){body+='<div class="muted" style="font-size:.78rem">answer 是空的：把用户原话填进去，否则等于空口白话。</div>';}
+    return '<div class="callout '+(ok?'callout-ok':'callout-err')+'"><div style="display:flex;gap:.5rem"><span>'+(ok?'✓':'⛔')+'</span><div>'+body+'</div></div></div>';
+  }).join('')+'</div>';
+  if(items.some(function(x){return isObj(x)&&x.answered===true;})){
+    h+='<div class="muted" style="font-size:.78rem;margin-top:.4rem">已答复的阻塞问题，结论要落进 <code class="code">context</code> / 验收标准 / <code class="code">follow_ups</code>，不要只留在问题列表里。</div>';
+  }
+  return section(k,title,h);
+}
+function renderOpenQuestions(k,title,v){
+  var items=asArr(v);
+  if(!items.length){return section(k,title,'<p class="muted" style="font-size:.85rem;margin:0">（空）</p>');}
+  var norm=normOpenQuestions(v);
+  var groups={open:[],assumed:[],answered:[],invalid:[]};
+  norm.forEach(function(q){(groups[q.status]||groups.invalid).push(q);});
+  var h='';
+  if(groups.open.length){
+    h+='<div style="margin-bottom:.6rem">'+callout('err',groups.open.length+' 个问题还没问过用户','进入 <b>ready</b> 之前必须用提问工具真的问出来，把答复写回 <code class="code">answer</code>；没问之前只能保持 <code class="code">status: draft</code>。')+'</div>';
+  }
+  if(groups.assumed.length){
+    h+='<div style="margin-bottom:.6rem">'+callout('warn','交付时要把这些假设念给用户听','下面 '+groups.assumed.length+' 条是"没等答复、按假设先做"的：交付/验收时逐条念给用户，并按 <code class="code">confirm_by</code> 的时间点回头确认。')+'</div>';
+  }
+  if(groups.invalid.length){
+    h+='<div style="margin-bottom:.6rem">'+callout('err',groups.invalid.length+' 条问题的 status 取值非法','status 只能是 <code class="code">open</code>（还没问过）、<code class="code">answered</code>（问过了）、<code class="code">assumed</code>（知情假设）。')+'</div>';
+  }
+  h+='<div style="display:grid;gap:.5rem">';
+  groups.open.forEach(function(q){
+    h+='<div class="callout callout-err"><div style="display:flex;gap:.5rem"><span>?</span><div><div class="prose"><span class="badge badge-err">没问过</span> '+inline(q.q)+'</div><div class="muted" style="font-size:.78rem">这是"问都没问过"，不是"问过了没答"；用提问工具发给用户后把答复填进 answer。</div></div></div></div>';
+  });
+  groups.invalid.forEach(function(q){
+    h+='<div class="callout callout-err"><div style="display:flex;gap:.5rem"><span>!</span><div><div class="prose"><span class="badge badge-err">status 非法</span> '+inline(q.q)+' <code class="code">status: '+esc(q.status)+'</code></div><div class="muted" style="font-size:.78rem">改成 open / answered / assumed 之一；写错会让"问没问过"判断失效。</div></div></div></div>';
+  });
+  groups.assumed.forEach(function(q){
+    var o=q.obj||{};
+    var body='<div class="prose"><span class="badge badge-warn">假设推进</span> '+inline(q.q)+'</div>';
+    body+='<div style="margin-top:.25rem;font-size:.84rem"><b>我按这个假设推进：</b>'+maybeMissing(o.assumption,'assumption')+'</div>';
+    body+='<div style="font-size:.84rem"><b>假设错了会：</b>'+maybeMissing(o.if_wrong,'if_wrong')+'</div>';
+    body+='<div style="font-size:.84rem"><b>最迟回头确认：</b>'+maybeMissing(o.confirm_by,'confirm_by')+'</div>';
+    h+='<div class="callout callout-warn"><div style="display:flex;gap:.5rem"><span>⚠</span><div>'+body+'</div></div></div>';
+  });
+  groups.answered.forEach(function(q){
+    var o=q.obj||{};
+    var noAnswer=isBlank(o.answer);
+    var body='<div class="prose">'+(noAnswer?'<span class="badge badge-err">已问过但没写用户原话</span>':'<span class="badge badge-ok">已问过</span>')+' '+inline(q.q)+'</div>';
+    if(!noAnswer){body+='<div class="prose" style="font-size:.84rem;margin-top:.2rem">用户答复：'+inline(o.answer)+'</div>';}
+    else{body+='<div class="muted" style="font-size:.78rem">answer 是空的：把用户原话填进去（用户没答就保持 open），不能只写个 answered。</div>';}
+    if(!isBlank(o.asked_at)){body+='<div class="muted" style="font-size:.78rem">提问日期：'+esc(String(o.asked_at))+'</div>';}
+    h+='<div class="callout '+(noAnswer?'callout-err':'callout-ok')+'"><div style="display:flex;gap:.5rem"><span>'+(noAnswer?'!':'✓')+'</span><div>'+body+'</div></div></div>';
+  });
+  h+='</div>';
+  return section(k,title,h);
+}
+
+
 function formatScalar(x){
   if(isBlank(x)){return '<span class="muted">—</span>';}
   if(x===true){return '<span class="badge badge-ok">是</span>';}
@@ -742,15 +1281,16 @@ function renderField(k,v,s,rec){
     case 'goal':case 'context':case 'background':case 'symptom':case 'question':case 'current_state':case 'motivation':
       return section(k,title,'<div class="card card-pad prose">'+inline(v)+'</div>');
     case 'assumptions':return renderQuestions(k,title,v,'assumptions');
-    case 'blocking_questions':return renderQuestions(k,title,v,'blocking_questions');
-    case 'open_questions':return renderQuestions(k,title,v,'open_questions');
+    case 'blocking_questions':return renderBlockingQuestions(k,title,v);
+    case 'open_questions':return renderOpenQuestions(k,title,v);
     case 'inputs':return section(k,title,renderInputs(v));
     case 'outputs':return section(k,title,renderOutputs(v));
     case 'constraints':case 'out_of_scope':case 'tools':case 'behavior_contract':case 'changes':case 'hypotheses':case 'methods':case 'deliverables':case 'decision_criteria':
       return section(k,title,'<div class="card card-pad">'+renderBullets(v)+'</div>');
     case 'related':return section(k,title,'<div class="card card-pad">'+renderLinks(v)+'</div>');
     case 'steps':return section(k,title,'<div class="card card-pad">'+renderSteps(v)+'</div>');
-    case 'acceptance_criteria':return section(k,title,renderChecklist(k,v,rec));
+    case 'acceptance_criteria':return section(k,title,renderChecklist(k,v,rec)
+      +'<div class="muted" style="font-size:.74rem;margin-top:.5rem">打勾只存在浏览器本地（localStorage），<b>不会写回 SPEC 文件</b>；要留下验收结论请跑 <code class="code">scripts/spec_status.py --to done --acceptance "AC#1|pass|证据"</code>。</div>');
     case 'regression_tests':return section(k,title,renderChecklist(k,v,rec));
     case 'failure_handling':return section(k,title,renderFailureHandling(v));
     case 'examples':return section(k,title,renderExamples(v));
@@ -803,7 +1343,7 @@ function renderDetail(rec){
   var el=$('detail'),w=$('welcome');
   var h='<div class="wrap">';
   if(rec.parseError){h+=renderParseError(rec);}
-  else{h+=renderHeader(rec);h+=renderValidation(rec);h+=renderBody(rec);h+=renderRaw(rec);}
+  else{h+=renderHeader(rec);h+=renderValidation(rec);h+=renderLifecycle(rec);h+=renderBody(rec);h+=renderRaw(rec);}
   h+='</div>';
   el.innerHTML=h;el.hidden=false;w.hidden=true;
 }

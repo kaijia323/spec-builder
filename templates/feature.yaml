@@ -1,18 +1,27 @@
 # feature 模板 —— 新功能 / 行为变更
 # 填满每个字段；暂时没有信息的写 "TBD" 或留空数组，不要删字段。
+# 收尾（做完了必须做）：python3 scripts/spec_status.py <本文件> --to done --by <你> \
+#   --note "3 项 AC 全过，单测 44 passed" --result "11/11 AC 通过，44 项测试全绿" \
+#   --acceptance "AC#1 描述|pass|跑过的命令或证据" ；需要独立复核再 --to verified --verify-by independent --verifier <复核者>
 spec:
   type: feature
   name: ""
   id: feature-<slug>
   version: 1
   updated: "2026-09-14"
-  status: draft          # draft | ready | in_progress | done | blocked
+  status: draft          # draft | ready | in_progress | done | verified | blocked
+  blocked_reason: ""     # status=blocked 时必填（G4）
+  status_log: []         # 追加式，不要覆盖历史：每次状态转移加一条 {date, from, to, by, version, note}
   related: []
   goal: ""               # 一句话最终目标
   context: ""            # 背景、为何要做、相关系统
   assumptions: []        # 明确写出的假设
-  blocking_questions: []
-  open_questions: []     # 仍需用户拍板的事
+  blocking_questions: [] # 不问就不能开工。结构：- {q: "单个导出文件上限多少 MB？", answered: false,
+                         #   asked_at: "", answer: ""}；没有要问的就保持 []。
+                         # 纯字符串 = 还没问过用户（会被当成 status: open，ready/done 时被 G1 拦住）
+  open_questions: []     # 可以先做但必须让用户知情。结构：- {q: "...", status: open|answered|assumed,
+                         #   asked_at: "", answer: "", assumption: "", if_wrong: "", confirm_by: ""}
+                         # status=open 表示还没问过用户；assumed 必须填 assumption / if_wrong / confirm_by
 
   inputs:
     - name: ""
@@ -34,6 +43,15 @@ spec:
 
   acceptance_criteria:   # 每条都必须可验证
     - ""
+
+  verification: {}       # G2：status=done/verified 时必须写
+                         # （用 python3 scripts/spec_status.py <本文件> --to done ... 会自动写入）
+                         # 结构：{result: "结论 + 关键数字", verified_by: self|independent|user,
+                         #   verifier: "复核者", verified_at: "YYYY-MM-DD",
+                         #   acceptance: [{criterion: "AC#1 ...", status: pass|fail|not_run, evidence: "..."}],
+                         #   commands: [], artifacts: [], unverified: []}
+
+  follow_ups: []         # 遗留问题：每条写清优先级与触发条件，例如 "F1（中）：重试后 participants 偏小"
 
   failure_handling:
     - scenario: ""       # 什么情况下会失败

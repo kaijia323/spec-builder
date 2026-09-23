@@ -29,10 +29,51 @@
 可空数组。相关 issue / PR / 事故 / 监控链接，把“这份规格从哪来”留下痕迹。
 
 ### status
-必填。`draft`（草稿）→ `ready`（可执行）→ `in_progress` → `done`；卡住用 `blocked`。**只有 `blocking_questions` 为空的 SPEC 才能标 `ready`**，否则执行者会在实现到一半时才发现要返工。
+必填。六选一，逐级递进：
+
+| status | 含义 | 进入条件 |
+|---|---|---|
+| `draft` | 草稿 | 默认；**还有问题没问过用户时只能停在这里** |
+| `ready` | 就绪 | 阻塞问题都已答复，且没有 `status: open` 的普通问题 |
+| `in_progress` | 进行中 | 同上，且已有人开工 |
+| `done` | 已完成（待复核） | 执行者自查完成，`verification` 写全 |
+| `verified` | 已验证 | 独立复核者或用户本人确认通过 |
+| `blocked` | 受阻 | `blocked_reason` 写清卡在哪 |
+
+`done` 与 `verified` 必须分开：前者是干活的人自己说完成了，后者是别人确认过。只有 `verified` 才算闭环。验收没过就退回 `in_progress`。
+
+状态值写错（例如 `shipped`、`completed`）是 **error**，不是提醒——状态是这份 SPEC 的结论，不能含糊。
+
+### status_log
+必填（新建 SPEC 时可以是空数组，之后由 `spec_status.py` 追加）。每次状态转移加一条，不要覆盖历史：
+
+```yaml
+status_log:
+  - date: "2026-09-23"
+    from: in_progress     # 第一次从无到有写 none
+    to: done
+    by: impl-agent        # 谁推进的
+    version: 3            # 转移后的 version
+    note: "3 项 AC 全过，44 项测试通过"
+```
+
+末条的 `to` 必须等于当前的 `status`，`version` 必须等于当前的 `version`——否则说明有人手改了状态没留痕，校验会报错。看板上的“N 天没动过”也是靠它算的。
+
+### blocked_reason
+`status: blocked` 时必填。写清卡在哪、卡在谁身上、需要什么才能继续。不要写“等确认”这种等于没说的话。
 
 ### blocking_questions
-可空数组。回答前不能开工的问题。与 `open_questions` 的分工：会影响实现方向的放这里，只是锦上添花的放 `open_questions`。
+可空数组（标 `done` 时必须为空）。**回答前不能开工**的问题：
+
+```yaml
+blocking_questions:
+  - q: "单个导出文件上限多少 MB？"
+    answered: true
+    asked_at: "2026-09-23"
+    answer: "50 MB，超了就分批"    # 用户原话
+```
+
+与 `open_questions` 的分工：会影响实现方向的放这里（答复前不能标 `ready`），其余放 `open_questions`。注意 `answered` 默认是 false——**写下来不等于问过了**。
 
 ### goal
 必填。一句话说清最终目标，可衡量。避免“优化系统”这类没有终点的目标。
@@ -44,7 +85,30 @@
 把“你没问、但按常理假设了”的事写出来。执行者据此判断要不要回来确认。没有就留空数组，不要编。
 
 ### open_questions
-不阻塞开工、可以并行确认的问题。把不确定性摊开比藏起来安全；但真正会影响实现方向的，要放进 `blocking_questions`。
+需要用户拍板、但不挡开工的问题。**关键：`status: open` 的意思是“这条还没问过用户”**——所以任何 `ready` / `in_progress` / `done` / `verified` 的 SPEC 里都不允许存在 `open`。
+
+```yaml
+open_questions:
+  - q: "历史周没有数据，要不要一次性回填？"
+    status: answered        # open | answered | assumed
+    asked_at: "2026-09-23"
+    answer: "不回填，旧周按 0 处理"   # answered 时必填，用用户原话
+
+  - q: "要不要顺带给阶段贡献加一条飘字提示？"
+    status: assumed
+    assumption: "按不做处理，保持静默入账"
+    if_wrong: "用户其实想要提示，需要再发一次小版本"
+    confirm_by: "发版前让用户在测试服确认一次"
+```
+
+三种状态的填写要求：
+
+- `open`：还没问过用户。只能出现在 `draft` 里。
+- `answered`：问过了，`answer` 填用户原话。不要转述成自己的判断——原话是以后吵架时的依据。
+  **`answer` 不能空**：写个 `answered` 但没有原话会被校验拦下，因为那等于"声称问过了"却拿不出证据。
+- `assumed`：用户说过“你先按你的想法做”，或者这条实在次要。**`assumption` / `if_wrong` / `confirm_by` 三个都要填**，等于把风险和回头确认的时机写在明面上。交付时要把 `assumed` 的条目念给用户听。
+
+纯字符串写法（旧格式）会被当成 `status: open`，也就是“问都没问过”——这是故意的，用来暴露历史遗留。
 
 ### acceptance_criteria
 整份 SPEC 最重要的字段。每条都要能被独立判定通过/失败。写法：
@@ -61,6 +125,51 @@
 
 ### examples
 至少一个输入→输出示例。不用很长，能说明契约即可。
+
+### verification
+`status: done` / `verified` 时必填——这是“做完了”的凭证，也是唯一安放验收结论的地方。
+
+```yaml
+verification:
+  result: "11/11 AC 通过；服务端 2 suites / 262 passed"   # 一句话结论 + 关键数字
+  verified_by: self          # self | independent | user
+  verifier: ""               # 复核者标识；verified 时必填
+  verified_at: "2026-09-22"
+  acceptance:
+    - criterion: "AC#3 空筛选返回 400"
+      status: pass           # pass | fail | not_run
+      evidence: "pnpm test -- export.spec.ts -> 12 passed"
+  commands:
+    - "pnpm --filter server test -> 2 suites / 262 passed"
+  artifacts:
+    - "tmp/verify-report.md"
+  unverified:
+    - "AC#11 需发布后 24h 观察测试服真实数据"
+```
+
+填写要求：
+
+- `verified_by: self` 表示执行者自查，只能配 `done`。
+- `status: verified` 必须由 `independent`（独立复核者）或 `user`（用户本人）来标，且 `verifier` 非空。
+- `acceptance` 要**逐条**对应 `acceptance_criteria`：条数不能少于验收标准（想合并就先把 AC 合并），标 `pass`/`fail` 的必须给 `evidence`。写“基本都过了”等于没写。
+- 标了 `not_run` 的条目要同时出现在 `unverified` 里，说明为什么没验、什么时候补。
+- 有 `fail` 项时不能标 `verified`；确实要带着已知问题发布，就留在 `done`，把失败项写进 `unverified` 与 `follow_ups`。
+- `research` 类型的 `verification` 放结论与依据即可，`commands` 可以留空。
+
+**不要自创字段名。** 校验器会识别这些常见漂移并提示改回标准字段：
+`implementation` / `acceptance_evidence` / `field_evidence` / `result` / `verified` → `verification`；
+`known_p2` / `remaining` / `issues` → `follow_ups`。
+
+### follow_ups
+可空数组。这次没做完、或做完才发现的事，每条写清优先级和触发条件：
+
+```yaml
+follow_ups:
+  - "F1（中）：重试后结算文档 participants 偏小，弹窗不受影响；下次改结算时分母落库时一起修。"
+  - "F5：本次未部署测试服，发布后按 AC#11 观察一次真实数据。"
+```
+
+写在对话里、或写成“已知问题”四个字，下一个人都找不到。
 
 ## feature 专属字段
 
@@ -111,6 +220,24 @@
 - `rollback`：触发条件 + 可执行步骤。**没有回滚方案的变更不允许上线。**
 - `monitoring`：指标、阈值、观察窗口、异常时动作。
 - 验收重点：变更生效 + 指标达标 + 出问题能按预案回滚。
+
+## 校验门槛对照表
+
+`validate_spec.py` 的报错信息里带门槛编号，对照这张表看：
+
+| 编号 | 检查什么 | 违反时 |
+|---|---|---|
+| `G0` | type 合法；status 是六个取值之一 | error |
+| `G1` | `ready`/`in_progress`：阻塞问题都已答复**且带用户答复原话**（`answer` 非空），且没有没问过的普通问题 | error |
+| `G2` | `done`/`verified`：`blocking_questions` 为空、`verification` 写全、`acceptance` 条数不少于 `acceptance_criteria` 且 `pass`/`fail` 必须带 `evidence`、问题全部结清、`status_log` 末条与当前状态一致 | error |
+| `G3` | `verified`：验证人不是执行者本人，`verifier`/`verified_at` 非空，没有 `fail` 项 | error |
+| `G4` | `blocked`：`blocked_reason` 非空 | error |
+| `G5` | `status_log` 末条的 `to`/`version` 与当前值一致；缺 `status_log` 的老 SPEC 只提醒 | error / warning |
+| `G6` | 顶层出现非标准字段（字段漂移） | warning |
+| `G7` | `ready`/`in_progress` 且状态超过 `--stale-days`（默认 14）天没动 | warning |
+| `G8` | 原有结构检查：必填字段、验收标准可验证性、类型专属字段等 | error / warning |
+
+体检历史 SPEC 时用 `--lenient`，它会把 `G1`~`G5` 降级为提醒，只看结构和字段健康度。
 
 ## 验收标准对照表
 

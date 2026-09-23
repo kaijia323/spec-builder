@@ -1,19 +1,28 @@
 # refactor 模板 —— 外部行为不变，内部结构优化
+# 收尾（做完了必须做）：python3 scripts/spec_status.py <本文件> --to done --by <你> \
+#   --note "行为契约逐条核对通过" --result "4/4 行为契约不变" \
+#   --acceptance "AC#1 公开 API 响应不变|pass|跑过的命令或证据"
 spec:
   type: refactor
   name: ""
   id: refactor-<slug>
   version: 1
   updated: "2026-09-14"
-  status: draft
+  status: draft          # draft | ready | in_progress | done | verified | blocked
+  blocked_reason: ""     # status=blocked 时必填（G4）
+  status_log: []         # 追加式，不要覆盖历史：每次状态转移加一条 {date, from, to, by, version, note}
   related: []
   goal: ""               # 结构目标，例如：把订单状态机收敛到一个模块
   context: ""
   current_state: ""      # 现状：代码散落在哪、有什么问题
   motivation: ""         # 为什么要重构
   assumptions: []
-  blocking_questions: []
-  open_questions: []
+  blocking_questions: [] # 不问就不能开工。结构：- {q: "这次重构允许改内部接口签名吗？", answered: false,
+                         #   asked_at: "", answer: ""}；没有要问的就保持 []。
+                         # 纯字符串 = 还没问过用户（会被当成 status: open，ready/done 时被 G1 拦住）
+  open_questions: []     # 可以先做但必须让用户知情。结构：- {q: "...", status: open|answered|assumed,
+                         #   asked_at: "", answer: "", assumption: "", if_wrong: "", confirm_by: ""}
+                         # status=open 表示还没问过用户；assumed 必须填 assumption / if_wrong / confirm_by
 
   scope:
     affected: []
@@ -32,6 +41,15 @@ spec:
 
   acceptance_criteria:
     - ""
+
+  verification: {}       # G2：status=done/verified 时必须写
+                         # （用 python3 scripts/spec_status.py <本文件> --to done ... 会自动写入）
+                         # 结构：{result: "结论 + 关键数字", verified_by: self|independent|user,
+                         #   verifier: "复核者", verified_at: "YYYY-MM-DD",
+                         #   acceptance: [{criterion: "AC#1 ...", status: pass|fail|not_run, evidence: "..."}],
+                         #   commands: [], artifacts: [], unverified: []}
+
+  follow_ups: []         # 遗留问题：每条写清优先级与触发条件，例如 "F1（低）：遗留 dead code 清理"
 
   failure_handling:
     - scenario: ""
